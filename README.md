@@ -30,14 +30,24 @@ KolibriOS, FreeDOS) are already in the repository, so the first boot needs no do
 
 ### On GitHub Pages
 
-1. Push this repository to GitHub.
-2. **Settings → Pages → Build and deployment → Source: “GitHub Actions”.**
-3. The workflow in `.github/workflows/pages.yml` runs the test suite, then publishes the
-   site to `https://<user>.github.io/<repo>/`.
+The repository is already wired for Pages, but GitHub only lets the **repository owner**
+switch it on the first time:
 
-No build step, no secrets, no configuration. Prefer the old-fashioned way? Pages can also
-serve this repository straight from the `main` branch root (**Source: Deploy from a
-branch**) — the site is plain static files. Details and troubleshooting: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+1. Push/merge to `main`.
+2. Open **Settings → Pages → Build and deployment**, and set **Source: “GitHub Actions”**
+   (one click — the workflow cannot do this for you, and it prints exactly this instruction
+   in the Actions log until it is done).
+3. Re-run the workflow from the **Actions** tab (**Re-run all jobs**), or push another commit.
+   The test suite runs, then the site is published to `https://<user>.github.io/<repo>/`.
+
+No build step, no secrets, no configuration file to edit. Prefer the old-fashioned way?
+Pages can also serve the repository straight from the `main` branch root
+(**Source: Deploy from a branch**, folder `/ (root)`) — the site is plain static files, and
+GitHub's Actions workflow simply stays unused. Details and troubleshooting:
+**[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
+While you wait for Pages, the same site runs anywhere: `npm start` serves it locally, and
+any static host (Cloudflare Pages, Netlify, a plain nginx) can serve the repository as-is.
 
 ## What actually boots
 
