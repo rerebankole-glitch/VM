@@ -25,7 +25,7 @@ export const CATALOG = [
         arch: "i386",
         status: "instant",
         summary: "A real Linux desktop with a graphical browser already installed. Small files load on demand — no large ISO to save.",
-        sizeBytes: 75_763_186,
+        sizeBytes: 75_763_187,
         device: "filesystem",
         ramMB: 256,
         vgaMB: 8,

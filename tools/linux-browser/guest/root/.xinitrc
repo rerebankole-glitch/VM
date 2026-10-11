@@ -13,7 +13,7 @@ fluxbox > /tmp/fluxbox.log 2>&1 &
 wm=$!
 dillo -g 960x640+32+24 file:///opt/webvm/welcome.html > /tmp/dillo.log 2>&1 &
 # QA listens on serial: an actual mapped browser window, not just kernel text.
-for attempt in $(seq 1 60); do
+for attempt in $(seq 1 120); do
     if xwininfo -root -tree 2>/dev/null | grep -q 'WebVM Linux'; then
         echo WEBVM_BROWSER_WINDOW_READY > /dev/ttyS0
         break

@@ -44,7 +44,24 @@ jobs:
             # Catalogue/asset/interface checks plus real boots of the bundled
             # images through the vendored emulator (v86's Node mode).
             - name: Run the test suite
-              run: npm test
+              run: |
+                  # Cloud runners vary in emulated-CPU throughput. Keep failures
+                  # visible in annotations too, even if signed run logs expire.
+                  set +e
+                  npm test > "$RUNNER_TEMP/webvm-tests.log" 2>&1
+                  result=$?
+                  cat "$RUNNER_TEMP/webvm-tests.log"
+                  if [ "$result" -ne 0 ]; then
+                      details=$(grep -A 95 '^not ok' "$RUNNER_TEMP/webvm-tests.log" | head -c 3500)
+                      if [ -z "$details" ]; then
+                          details=$(tail -c 3500 "$RUNNER_TEMP/webvm-tests.log")
+                      fi
+                      details="${details//'%'/'%25'}"
+                      details="${details//$'\r'/'%0D'}"
+                      details="${details//$'\n'/'%0A'}"
+                      echo "::error title=Guest/test failure::$details"
+                  fi
+                  exit "$result"
 
     build:
         name: Build site
