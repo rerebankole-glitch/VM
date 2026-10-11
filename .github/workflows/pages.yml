@@ -44,7 +44,11 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
+            # `enablement: true` lets the first run switch Pages on by itself
+            # (Settings → Pages → Source: GitHub Actions).
             - uses: actions/configure-pages@v5
+              with:
+                  enablement: true
 
             # Assemble only the files the site needs, so tests and tooling stay
             # out of the published artifact.
