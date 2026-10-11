@@ -1,0 +1,39 @@
+Browser VM — third-party components
+==================================
+
+The MIT licence in LICENSE covers the application code in this repository
+(index.html, app/, tools/, tests/, docs/). It does not cover the vendored
+components below, which keep their own licences.
+
+1. v86 — x86 PC emulator and x86-to-wasm JIT, running in the browser
+   Files:  assets/v86/libv86.js, assets/v86/v86.wasm, assets/v86/v86-fallback.wasm,
+           assets/v86/v86.d.ts, assets/v86/LICENSE-v86.txt
+   Author: Fabian Hemmer and contributors — https://github.com/copy/v86
+   Licence: Simplified BSD (2-clause). See assets/v86/LICENSE-v86.txt.
+
+2. SeaBIOS (BIOS rom)
+   Files:  assets/v86/seabios.bin
+   Licence: GNU LGPL v3. See assets/v86/COPYING.LESSER.
+   Source:  https://github.com/copy/v86 (bios/seabios.bin, built from SeaBIOS)
+
+3. VGA BIOS rom
+   Files:  assets/v86/vgabios.bin
+   Licence: GNU LGPL v3. See assets/v86/COPYING.LESSER.
+   Source:  https://github.com/copy/v86 (bios/vgabios.bin)
+
+4. Demo boot images
+   Files:  assets/images/tiny-linux.iso, assets/images/freedos.img, assets/images/kolibri.img
+   Source: https://github.com/copy/images (the v86 project's test images)
+   Contents:
+     tiny-linux.iso  — Linux built with Buildroot (GPL and other free licences,
+                       sources available from https://buildroot.org/ and the
+                       component projects)
+     freedos.img     — FreeDOS 7.22 (GPL; source: https://www.freedos.org/)
+     kolibri.img     — KolibriOS (GPL; source: https://kolibri.os/)
+   These are unmodified redistributions of freely licensed operating systems.
+   See assets/images/README.md for checksums.
+
+No part of the operating systems offered for download through the interface
+(MX Linux, Ubuntu/Lubuntu, Linux Mint, Debian, antiX, Alpine, Tiny Core,
+Arch Linux 32) is distributed with this repository; the interface only links
+to their official download locations.

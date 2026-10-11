@@ -1,0 +1,30 @@
+{
+    "name": "browser-vm",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "description": "Boot MX Linux, Lubuntu, Linux Mint and other 32-bit x86 systems inside a browser tab. Static site built on v86 — no build step, ready for GitHub Pages.",
+    "keywords": [
+        "v86",
+        "emulator",
+        "virtual-machine",
+        "x86",
+        "linux",
+        "mx-linux",
+        "lubuntu",
+        "linux-mint",
+        "github-pages"
+    ],
+    "license": "MIT",
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "start": "node tools/serve.mjs",
+        "serve": "node tools/serve.mjs",
+        "test": "node --test tests/*.test.mjs",
+        "vendor": "bash tools/vendor-v86.sh && bash tools/fetch-demo-images.sh",
+        "vendor:v86": "bash tools/vendor-v86.sh",
+        "vendor:images": "bash tools/fetch-demo-images.sh"
+    }
+}
