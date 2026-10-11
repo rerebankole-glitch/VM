@@ -1,9 +1,9 @@
 # A deliberately small 32-bit desktop. All packages are signature-checked by apk.
-FROM docker.io/i386/alpine:3.23
+FROM docker.io/i386/alpine:3.23@sha256:02112cb9761532f596291bee3c8a30f5b383e3020bc50a143e0f1bffdd40069f
 
 RUN apk update && apk upgrade && apk add --no-cache \
     alpine-base alpine-conf openrc agetty linux-virt linux-firmware-none \
-    xorg-server xf86-video-fbdev xf86-input-mouse xf86-input-keyboard \
+    xorg-server xf86-video-fbdev xf86-input-libinput eudev \
     xinit xset xsetroot xwininfo fluxbox xterm dillo ca-certificates font-dejavu
 
 COPY guest/ /
