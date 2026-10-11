@@ -44,6 +44,21 @@ test("the bundle exports V86 for browsers and Node", () => {
     assert.ok(source.includes('module.exports["V86"]') || source.includes("exports.V86"), "CommonJS export missing");
 });
 
+test("the 64-bit v86_64 core is vendored next to the 32-bit emulator", () => {
+    const dir = path.join(ROOT, "assets", "v86_64");
+    for (const file of ["libv86.js", "v86.wasm", "v86-fallback.wasm", "VERSION"]) {
+        const full = path.join(dir, file);
+        assert.ok(fs.existsSync(full), `missing assets/v86_64/${file}`);
+        assert.ok(fs.statSync(full).size > 0, `assets/v86_64/${file} is empty`);
+    }
+    const wasm = fs.readFileSync(path.join(dir, "v86.wasm"));
+    assert.equal(wasm.subarray(0, 4).toString("binary"), "\0asm");
+    assert.ok(wasm.length > 1_000_000, "v86_64 wasm is too small");
+    const source = fs.readFileSync(path.join(dir, "libv86.js"), "utf8");
+    assert.ok(source.includes("window.V86") || source.includes('window["V86"]'));
+    assert.ok(fs.statSync(path.join(dir, "libv86.js")).size > 100_000);
+});
+
 test("demo images match their recorded checksums", () => {
     const sumsPath = path.join(IMAGES_DIR, "SHA256SUMS");
     assert.ok(fs.existsSync(sumsPath), "assets/images/SHA256SUMS is missing");
@@ -68,7 +83,7 @@ test("vendored assets stay bounded, including every on-demand filesystem file", 
             else files.push(file);
         }
     };
-    for (const dir of ["assets/v86", "assets/images"]) walk(path.join(ROOT, dir));
+    for (const dir of ["assets/v86", "assets/v86_64", "assets/images"]) walk(path.join(ROOT, dir));
     const total = files.reduce((sum, file) => sum + fs.statSync(file).size, 0);
     assert.ok(total < 110 * 1024 * 1024, `vendored assets are ${(total / 1e6).toFixed(1)} MB — too big to commit`);
     assert.ok(files.length < 5000, "the static guest must not become an unbounded generated dataset");

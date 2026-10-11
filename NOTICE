@@ -14,8 +14,8 @@ components below, which keep their own licences.
 1b. v86_64 (optional) — experimental 64-bit long-mode fork of v86
    Files:  assets/v86_64/libv86.js, assets/v86_64/v86.wasm, assets/v86_64/v86-fallback.wasm
            when the operator vendors them from https://github.com/portlandhodl/v86_64
-   Licence: Simplified BSD (2-clause), same as v86. Not shipped in this git tree
-           until those release assets are added.
+   Licence: Simplified BSD (2-clause), same as v86. Vendored from the
+           portlandhodl/v86_64 GitHub release tagged `latest`.
 
 2. SeaBIOS (BIOS rom)
    Files:  assets/v86/seabios.bin

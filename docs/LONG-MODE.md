@@ -2,11 +2,10 @@
 
 ## Short version
 
-This Pages VM ships **32-bit v86**. A 64-bit CPU is possible only with the
-separate [v86_64](https://github.com/portlandhodl/v86_64) wasm core. That core
-is **not in git** (GitHub serves it from a release CDN). Drop the three files
-listed in [assets/v86_64/README.md](../assets/v86_64/README.md) into
-`assets/v86_64/`, then boot the built-in **64-bit CPU** floppy.
+This Pages VM ships **32-bit v86** for every existing guest. A second core,
+[v86_64](https://github.com/portlandhodl/v86_64), is vendored in
+`assets/v86_64/` and is used only for `x86_64` guests. Boot the built-in
+**64-bit CPU** floppy to see long mode (serial token `WEBVM_X86_64_READY`).
 
 ## Ubuntu and Mint
 

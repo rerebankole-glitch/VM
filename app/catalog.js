@@ -123,9 +123,9 @@ export const CATALOG = [
         vgaMB: 4,
         bundled: { path: "assets/images/tiny64.img", fileName: "tiny64.img" },
         notes: [
-            "Needs the 64-bit emulator files in assets/v86_64/ (libv86.js, v86.wasm, v86-fallback.wasm from portlandhodl/v86_64).",
-            "This guest is not an operating system. It only shows that long mode works.",
+            "This guest is not an operating system. It only shows that the emulated CPU can run 64-bit code.",
             "Current Ubuntu and Mint 64-bit ISOs are multi-gigabyte and need gigabytes of RAM. They are not bundled and are not claimed to boot here.",
+            "32-bit Alpine, KolibriOS and the legacy Ubuntu/Mint i386 ISOs still use the original v86 core.",
         ],
         links: [
             { label: "v86_64 releases (the 64-bit CPU)", url: "https://github.com/portlandhodl/v86_64/releases/tag/latest", kind: "page" },
