@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { CATALOG, UNSUPPORTED, getEntry, groupedCatalog } from "../app/catalog.js";
+import { CATALOG, CASPER_LIVE, RELAY_IDS, UNSUPPORTED, getEntry, groupedCatalog } from "../app/catalog.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,6 +34,26 @@ test("the three requested distributions are present with a 32-bit release", () =
         assert.equal(entry.arch, "i386", `${needle} must be a 32-bit release`);
         assert.ok(entry.links.some((link) => link.url.includes(".iso") || link.kind === "page"), `${needle} needs a download link`);
     }
+});
+
+test("ubuntu and mint are first-class 32-bit live guests with direct kernel boot", () => {
+    const ubuntu = getEntry("ubuntu-18.04.5-i386");
+    const mint = getEntry("mint-19.3-xfce-32");
+    const lubuntu = getEntry("lubuntu-18.04.5-i386");
+    for (const entry of [ubuntu, mint, lubuntu]) {
+        assert.ok(entry, "missing ubuntu-family catalogue entry");
+        assert.equal(entry.arch, "i386");
+        assert.equal(entry.device, "cdrom");
+        assert.deepEqual(entry.live.kernel, CASPER_LIVE.kernel);
+        assert.match(entry.live.cmdline, /boot=casper/);
+        assert.match(entry.live.cmdline, /console=ttyS0/);
+        assert.equal(entry.bootOrder, "cd");
+        assert.equal(entry.acpi, false);
+        assert.ok(entry.links.some((link) => link.kind === "direct" && /\.iso(\/download)?$/.test(link.url)));
+    }
+    assert.ok(ubuntu.legacy && mint.legacy);
+    assert.ok(RELAY_IDS.includes(ubuntu.id) && RELAY_IDS.includes(mint.id));
+    assert.equal(new Set(CATALOG.map((entry) => entry.id)).size, CATALOG.length, "duplicate catalogue ids");
 });
 
 test("instant entries ship an image that really exists on disk", () => {

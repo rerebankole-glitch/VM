@@ -14,6 +14,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { getEntry } from "../app/catalog.js";
+import { ISO_SECTOR, createIsoReader, listIsoFiles, looksLikeBzImage } from "../app/iso9660.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const V86_DIR = path.join(ROOT, "assets", "v86");
@@ -88,6 +89,30 @@ test("the bundled KolibriOS floppy boots far enough to run real code", async () 
     );
     assert.equal(errors.length, 0);
     assert.ok(counter > 5_000_000, `KolibriOS boot only retired ${counter} instructions`);
+});
+
+test("a Linux bzImage extracted from an ISO executes in v86 (Ubuntu/Mint boot path)", async () => {
+    const handle = await fs.promises.open(path.join(IMAGES, "tiny-linux.iso"), "r");
+    try {
+        const reader = createIsoReader({
+            async read(start, length) {
+                const buf = Buffer.alloc(length);
+                const { bytesRead } = await handle.read(buf, 0, length, start);
+                return new Uint8Array(buf.subarray(0, bytesRead));
+            },
+        });
+        const files = await listIsoFiles(reader);
+        const kernel = files.find((file) => file.path === "bzimage");
+        assert.ok(kernel, "tiny-linux.iso should contain BZIMAGE");
+        const bytes = await reader.read(kernel.lba * ISO_SECTOR, kernel.size);
+        assert.equal(looksLikeBzImage(bytes), true);
+        const { counter, errors } = await bootFor({
+            bzimage: { buffer: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) },
+            cmdline: "console=ttyS0 tsc=reliable",
+        }, 4000);
+        assert.equal(errors.length, 0);
+        assert.ok(counter > 1_000_000, `extracted kernel only retired ${counter} instructions`);
+    } finally { await handle.close(); }
 });
 
 test("the bundled Linux ISO boots as a CD-ROM", async () => {

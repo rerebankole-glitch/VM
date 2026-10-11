@@ -476,12 +476,35 @@ body[data-input="captured"] #input-status { color: var(--accent); }
 .welcome-actions .btn { padding: 10px 18px; }
 .welcome-actions .primary span { margin-left: 18px; }
 .welcome-footnote { margin: 12px 0 24px; color: var(--text-faint); font-size: 0.69rem; max-width: 460px; }
-.mint-launch { display: flex; gap: 12px; align-items: center; padding: 15px 0 0; border-top: 1px solid var(--line); }
-.mint-launch > div { flex: 1; }
-.mint-launch strong { font-size: 0.8rem; display: block; font-weight: 550; }
-.mint-launch > div > span { font-size: 0.7rem; color: var(--text-faint); display: block; margin-top: 3px; }
-.mint-launch .btn { white-space: nowrap; font-size: 0.75rem; padding-right: 0; }
-.mint-mark { width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center; color: #a4d587; border: 1px solid #42573a; background: #233123; border-radius: 10px; font-size: 1.15rem; font-weight: 600; letter-spacing: -0.14em; padding-right: 3px; }
+.family-launch { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 16px; margin-top: 4px; border-top: 1px solid var(--line); }
+.family-card {
+    display: flex; gap: 10px; align-items: center; text-align: left;
+    padding: 10px 12px; border: 1px solid var(--line); background: var(--bg-elevated);
+    border-radius: 10px; color: inherit; cursor: pointer;
+}
+.family-card:hover { border-color: var(--accent); }
+.family-card strong { display: block; font-size: 0.8rem; font-weight: 600; }
+.family-card em { display: block; font-style: normal; font-size: 0.68rem; color: var(--text-faint); margin-top: 2px; }
+.os-mark, .mint-mark {
+    width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center;
+    border-radius: 10px; font-size: 0.95rem; font-weight: 700; letter-spacing: -0.08em;
+}
+.mint-mark { color: #a4d587; border: 1px solid #42573a; background: #233123; padding-right: 2px; }
+.ubuntu-mark { color: #e9946a; border: 1px solid #5a2c22; background: #2a1612; }
+.guest-boot-hint {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: min(520px, calc(100% - 24px)); z-index: 4;
+    display: flex; gap: 12px; align-items: flex-start; justify-content: space-between;
+    padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: rgba(16, 26, 29, 0.94); color: var(--text-dim); font-size: 0.75rem;
+}
+.guest-boot-hint strong { display: block; color: var(--text); font-size: 0.8rem; margin-bottom: 3px; }
+.guest-boot-hint code {
+    display: block; margin-top: 6px; font-size: 0.68rem; color: var(--accent);
+    background: transparent; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.guest-boot-actions { display: flex; flex-direction: column; gap: 4px; }
+.log-serial { color: var(--text-faint); font-family: var(--mono); font-size: 0.72rem; }
 .saved-session { margin-top: 21px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(140, 221, 186, 0.03); }
 .saved-session .eyebrow, .saved-session strong, #session-summary { display: block; }
 .saved-session strong { font-size: 0.87rem; margin: 5px 0 2px; }
@@ -547,8 +570,8 @@ body.desktop-mode .error-box { max-height: 150px; overflow-y: auto; }
 .legacy-warning { padding: 14px; border: 1px solid rgba(251, 191, 36, 0.24); border-radius: 9px; background: rgba(251, 191, 36, 0.04); }
 .legacy-warning strong { font-size: 0.84rem; color: var(--warn); }
 .legacy-warning p { font-size: 0.8rem; margin: 5px 0 0; }
-#mint-stream-status { padding: 0; font-size: 0.79rem; color: var(--accent); overflow-wrap: anywhere; }
-#mint-stream-status.is-error { color: var(--warn); }
+#legacy-stream-status { padding: 0; font-size: 0.79rem; color: var(--accent); overflow-wrap: anywhere; }
+#legacy-stream-status.is-error { color: var(--warn); }
 
 @media (max-width: 1000px) {
     .sidebar { max-height: 430px; }
@@ -569,8 +592,8 @@ body.desktop-mode .error-box { max-height: 150px; overflow-y: auto; }
     .screen-overlay { padding: 22px; }
     .overlay-card h2 { font-size: 2.05rem; }
     .welcome-symbol { margin-bottom: 16px; width: 56px; height: 56px; border-radius: 14px; }
-    .mint-launch { flex-wrap: wrap; }
-    .mint-launch .btn { padding: 5px 0; margin-left: 48px; }
+    .family-launch { grid-template-columns: 1fr; }
+    .guest-boot-hint { flex-wrap: wrap; }
     .display-bar { gap: 7px; padding: 7px 10px; }
     .source-badge { max-width: 115px; }
     #input-status { display: none; }

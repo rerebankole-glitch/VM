@@ -32,7 +32,7 @@ publishing 32-bit images. The newest releases that still exist in 32-bit are:
 | Ubuntu / Lubuntu / Xubuntu | **18.04.5 LTS (i386)** | Ubuntu dropped i386 desktop images after 18.04 |
 | Linux Mint | **19.3 “Tricia”** | Mint 20 (2020) and later are 64-bit only |
 | MX Linux | **19.4 (386)** | MX 21 and later are 64-bit only |
-| antiX | **23.2 (386)** | antiX 26 is x64 only |
+| antiX | **23.2 and 26.1 (386)** | antiX still publishes 386 full images |
 | Debian | **12 “bookworm” i386** | Debian 13 keeps i386 only as a partial architecture |
 | Alpine Linux | still ships `x86` | console-first, very light |
 | Tiny Core Linux | still ships `x86` | 17 MB Core image, ideal for emulation |
@@ -58,7 +58,30 @@ persistent server-side files, see [REMOTE-MINT.md](REMOTE-MINT.md).
   editor, games and a menu bar. The best demonstration of what the emulator can do.
 * **FreeDOS 7.22** — a 720 KB floppy that boots instantly and runs DOS programs.
 
-### Live desktops (MX, Lubuntu, Mint, Debian, antiX)
+### Direct kernel boot (Ubuntu, Mint, Lubuntu, MX)
+
+For Casper and Debian live-boot ISOs the emulator does **not** have to sit on the
+ISOLINUX menu. It parses ISO 9660 (Joliet / Rock Ridge names) with the same HTTP
+Range requests used to stream the disc, copies `casper/vmlinuz` (or `live/vmlinuz`)
+and the initrd into RAM, and starts v86 with `bzimage` + `initrd` + the original CD.
+
+Kernel command line (Ubuntu/Mint):
+
+```
+boot=casper ignore_uuid noprompt noeject nomodeset vga=791 noapic nolapic acpi=off
+--- console=tty0 console=ttyS0,115200
+```
+
+The CD stays attached so casper can still find `filesystem.squashfs`. Serial output
+is copied into the activity log; a banner stays on screen until a display manager
+shows up. If extraction fails (no casper directory, host refused a range, file is
+not a bzImage), the machine falls back to booting the CD and sends Enter after a
+few seconds.
+
+This is still a 32-bit emulator. It does **not** make Ubuntu 20.04+ or Mint 20+
+bootable.
+
+### Live desktops (MX, Ubuntu, Lubuntu, Mint, Debian, antiX)
 
 These are full Linux systems. Expect:
 

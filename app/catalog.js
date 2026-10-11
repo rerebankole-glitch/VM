@@ -14,6 +14,23 @@
 
 /** @typedef {"instant"|"works"|"tricky"|"blocked"} OsStatus */
 
+/** Casper live ISOs (Ubuntu, Lubuntu, Mint 19). Used to boot the kernel directly. */
+export const CASPER_LIVE = {
+    kernel: ["casper/vmlinuz", "casper/vmlinuz.efi", "casper/vmlinuz.32"],
+    initrd: ["casper/initrd", "casper/initrd.lz", "casper/initrd.gz", "casper/initrd.img"],
+    cmdline: "boot=casper ignore_uuid noprompt noeject nomodeset vga=791 noapic nolapic acpi=off pci=nomsi nosplash --- console=tty0 console=ttyS0,115200 tsc=reliable random.trust_cpu=on mitigations=off",
+};
+
+/** Debian live-boot (MX, Debian live). */
+export const LIVEBOOT_LIVE = {
+    kernel: ["live/vmlinuz", "live/vmlinuz1", "live/vmlinuz2"],
+    initrd: ["live/initrd", "live/initrd.img", "live/initrd.gz", "live/initrd1"],
+    cmdline: "boot=live components ignore_uuid noeject nomodeset vga=791 noapic nolapic acpi=off nosplash --- console=tty0 console=ttyS0,115200 tsc=reliable random.trust_cpu=on mitigations=off",
+};
+
+/** Named images the optional Node host may relay (never an open proxy). */
+export const RELAY_IDS = ["ubuntu-18.04.5-i386", "mint-19.3-xfce-32", "lubuntu-18.04.5-i386"];
+
 export const CATALOG = [
     {
         id: "alpine-browser",
@@ -111,39 +128,84 @@ export const CATALOG = [
     },
 
     /* ------------------------------------------------------------------ *
-     * The distributions this project was asked for
+     * Ubuntu + Mint — first-class streamed live desktops
      * ------------------------------------------------------------------ */
     {
-        id: "mx-19.4-386",
-        name: "MX Linux",
-        version: "19.4 (386)",
-        family: "Debian",
-        desktop: "Xfce",
+        id: "ubuntu-18.04.5-i386",
+        name: "Ubuntu",
+        version: "18.04.5 LTS (i386)",
+        family: "Ubuntu",
+        desktop: "GNOME Flashback / Unity",
         arch: "i386",
         status: "tricky",
-        summary: "The classic MX desktop. 19.4 is the last 32-bit MX release — MX 21 and newer are 64-bit only and cannot boot here.",
-        sizeBytes: 1_700_000_000,
+        legacy: true,
+        summary: "The last 32-bit Ubuntu Desktop. Streamed live ISO; the kernel is pulled out of the disc so boot skips ISOLINUX.",
+        sizeBytes: 1_900_000_000,
         device: "cdrom",
         ramMB: 512,
         vgaMB: 8,
+        nicType: "virtio",
+        bootOrder: "cd",
+        acpi: false,
+        live: CASPER_LIVE,
         notes: [
-            "Pick the file named MX-19.4_386.iso. The 64-bit one (x64) will not boot.",
-            "Press ENTER at the ISOLINUX menu; the live desktop appears after a long wait.",
-            "If the boot hangs at a black screen, re-select the entry, press TAB and append ` nomodeset`.",
-            "4.19 kernel + PAE works on v86; the desktop is slow but usable for poking around.",
+            "Stream `ubuntu-18.04.5-desktop-i386.iso` — not amd64. Ubuntu 20.04+ cannot boot here.",
+            "18.04 is out of standard support. Use it for experiments, not private accounts.",
+            "The emulator reads casper/vmlinuz + initrd with Range requests and boots that kernel with nomodeset.",
+            "GNOME/Unity is heavy in v86. If the desktop never appears, try Lubuntu 18.04.5 (same Ubuntu base, LXDE).",
+            "Expect many minutes. The serial lines in the activity log are kernel messages, not a freeze.",
         ],
         links: [
             {
-                label: "MX-19.4_386.iso (SourceForge, official)",
-                url: "https://sourceforge.net/projects/mx-linux/files/Old/MX-19.4/MX-19.4_386.iso/download",
+                label: "ubuntu-18.04.5-desktop-i386.iso (old-releases.ubuntu.com)",
+                url: "https://old-releases.ubuntu.com/releases/bionic/ubuntu-18.04.5-desktop-i386.iso",
                 kind: "direct",
             },
             {
-                label: "Browse the MX-19.4 folder",
-                url: "https://sourceforge.net/projects/mx-linux/files/Old/MX-19.4/",
-                kind: "page",
+                label: "ubuntu-18.04.5-desktop-i386.iso (Internet Archive)",
+                url: "https://archive.org/download/ubuntu-18.04.5-desktop-i386/ubuntu-18.04.5-desktop-i386.iso",
+                kind: "direct",
             },
-            { label: "mxlinux.org downloads", url: "https://mxlinux.org/download-links/", kind: "page" },
+            { label: "All 18.04.5 images (official old-releases)", url: "https://old-releases.ubuntu.com/releases/bionic/", kind: "page" },
+        ],
+    },
+    {
+        id: "mint-19.3-xfce-32",
+        name: "Linux Mint",
+        version: "19.3 “Tricia” Xfce (32-bit)",
+        family: "Ubuntu",
+        desktop: "Xfce",
+        arch: "i386",
+        status: "tricky",
+        summary: "Legacy, unsupported Mint for experiments only. Xfce is lighter than Cinnamon. Direct kernel boot from the live ISO.",
+        legacy: true,
+        sizeBytes: 1_973_420_032,
+        device: "cdrom",
+        ramMB: 512,
+        vgaMB: 8,
+        nicType: "virtio",
+        bootOrder: "cd",
+        acpi: false,
+        live: CASPER_LIVE,
+        notes: [
+            "Stream `linuxmint-19.3-xfce-32bit.iso` from a verified host — no ISO file to save locally.",
+            "Mint 19.3 is out of security support. Do not use it for private accounts or everyday computing.",
+            "Mint 20 and later are 64-bit only; 19.3 is the newest Mint that can run in an x86 emulator.",
+            "The emulator extracts casper/vmlinuz + initrd and boots with nomodeset, skipping the CD menu.",
+            "Cinnamon 32-bit exists too but is far heavier — avoid it on emulated hardware.",
+        ],
+        links: [
+            {
+                label: "linuxmint-19.3-xfce-32bit.iso (mirror.yandex.ru)",
+                url: "https://mirror.yandex.ru/linuxmint/stable/19.3/linuxmint-19.3-xfce-32bit.iso",
+                kind: "direct",
+            },
+            {
+                label: "linuxmint-19.3-xfce-32bit.iso (mirror.ihost.md)",
+                url: "https://mirror.ihost.md/linuxmint/iso/stable/19.3/linuxmint-19.3-xfce-32bit.iso",
+                kind: "direct",
+            },
+            { label: "All Mint releases (official)", url: "https://linuxmint.com/download_all.php", kind: "page" },
         ],
     },
     {
@@ -154,16 +216,21 @@ export const CATALOG = [
         desktop: "LXDE",
         arch: "i386",
         status: "tricky",
-        summary: "The last 32-bit Lubuntu. Lightweight LXDE desktop on Ubuntu 18.04 — the friendliest of the big three for an emulator.",
+        legacy: true,
+        summary: "The last 32-bit Lubuntu. Lightweight LXDE on Ubuntu 18.04 — the friendliest Ubuntu-family desktop for this emulator.",
         sizeBytes: 1_100_000_000,
         device: "cdrom",
         ramMB: 512,
         vgaMB: 8,
+        nicType: "virtio",
+        bootOrder: "cd",
+        acpi: false,
+        live: CASPER_LIVE,
         notes: [
             "Grab the file ending in `-desktop-i386.iso` (NOT amd64).",
-            "Choose “Try Lubuntu without installing” at the boot menu.",
-            "LXDE is much lighter than Cinnamon, so this boots noticeably faster than Mint.",
-            "Add ` nomodeset` after pressing TAB on the boot entry if graphics misbehave.",
+            "18.04 is out of standard support. Experiments only, not private accounts.",
+            "Direct kernel boot reads casper/vmlinuz from the ISO; LXDE is much lighter than Ubuntu GNOME or Mint Cinnamon.",
+            "Add ` nomodeset` after pressing TAB on the boot entry if you fall back to the CD menu.",
         ],
         links: [
             {
@@ -179,38 +246,45 @@ export const CATALOG = [
             { label: "lubuntu.me", url: "https://lubuntu.me/", kind: "page" },
         ],
     },
+
+    /* ------------------------------------------------------------------ *
+     * Other 32-bit Linux desktops
+     * ------------------------------------------------------------------ */
     {
-        id: "mint-19.3-xfce-32",
-        name: "Linux Mint",
-        version: "19.3 “Tricia” Xfce (32-bit)",
-        family: "Ubuntu",
+        id: "mx-19.4-386",
+        name: "MX Linux",
+        version: "19.4 (386)",
+        family: "Debian",
         desktop: "Xfce",
         arch: "i386",
         status: "tricky",
-        summary: "Legacy, unsupported Mint for experiments only. Xfce is lighter than Cinnamon, but booting in v86 is slow and not guaranteed.",
-        legacy: true,
-        sizeBytes: 1_973_420_032,
+        summary: "The classic MX desktop. 19.4 is the last 32-bit MX release — MX 21 and newer are 64-bit only and cannot boot here.",
+        sizeBytes: 1_700_000_000,
         device: "cdrom",
         ramMB: 512,
         vgaMB: 8,
+        nicType: "virtio",
+        bootOrder: "cd",
+        acpi: false,
+        live: LIVEBOOT_LIVE,
         notes: [
-            "Stream `linuxmint-19.3-xfce-32bit.iso` from a verified host — no ISO file to save locally.",
-            "Mint 19.3 is out of security support. Do not use it for private accounts or everyday computing.",
-            "Mint 20 and later are 64-bit only; 19.3 is the newest Mint that can run in an x86 emulator.",
-            "Cinnamon 32-bit exists too but is far heavier — avoid it on emulated hardware.",
+            "Pick the file named MX-19.4_386.iso. The 64-bit one (x64) will not boot.",
+            "The emulator tries to boot live/vmlinuz directly; otherwise press ENTER at the ISOLINUX menu.",
+            "If the boot hangs at a black screen, re-select the entry, press TAB and append ` nomodeset`.",
+            "4.19 kernel + PAE works on v86; the desktop is slow but usable for poking around.",
         ],
         links: [
             {
-                label: "linuxmint-19.3-xfce-32bit.iso (mirror.yandex.ru)",
-                url: "https://mirror.yandex.ru/linuxmint/stable/19.3/linuxmint-19.3-xfce-32bit.iso",
+                label: "MX-19.4_386.iso (SourceForge, official)",
+                url: "https://sourceforge.net/projects/mx-linux/files/Old/MX-19.4/MX-19.4_386.iso/download",
                 kind: "direct",
             },
             {
-                label: "linuxmint-19.3-xfce-32bit.iso (mirror.ihost.md)",
-                url: "https://mirror.ihost.md/linuxmint/iso/stable/19.3/linuxmint-19.3-xfce-32bit.iso",
-                kind: "direct",
+                label: "Browse the MX-19.4 folder",
+                url: "https://sourceforge.net/projects/mx-linux/files/Old/MX-19.4/",
+                kind: "page",
             },
-            { label: "All Mint releases (official)", url: "https://linuxmint.com/download_all.php", kind: "page" },
+            { label: "mxlinux.org downloads", url: "https://mxlinux.org/download-links/", kind: "page" },
         ],
     },
 
@@ -285,6 +359,10 @@ export const CATALOG = [
         device: "cdrom",
         ramMB: 512,
         vgaMB: 8,
+        nicType: "virtio",
+        bootOrder: "cd",
+        acpi: false,
+        live: LIVEBOOT_LIVE,
         notes: [
             "Open the i386 iso-hybrid folder and take the Xfce or LXDE image (avoid GNOME — too heavy).",
             "For a small download use `debian-12.*-i386-netinst.iso` instead and install over the emulated network.",
@@ -385,6 +463,13 @@ export const UNSUPPORTED = [
         arch: "x86_64",
         status: "blocked",
         reason: "Mint has been 64-bit only since Mint 20. Use Mint 19.3 Xfce (32-bit).",
+    },
+    {
+        id: "ubuntu-20-amd64",
+        name: "Ubuntu 20.04 / 22.04 / 24.04 / 25.04",
+        arch: "x86_64",
+        status: "blocked",
+        reason: "Ubuntu stopped shipping i386 desktop images after 18.04. Use Ubuntu 18.04.5 (i386) or Lubuntu 18.04.5.",
     },
     {
         id: "lubuntu-20-amd64",

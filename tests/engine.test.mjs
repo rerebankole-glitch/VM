@@ -170,6 +170,33 @@ test("reviewed text works with host input disabled and does not leave the adapte
 });
 
 
+test("live Linux ISOs boot an extracted kernel while keeping the CD attached", async () => {
+    await fixture(async ({ engine }) => {
+        const bzimage = { buffer: new ArrayBuffer(8) };
+        const initrd = { buffer: new ArrayBuffer(4) };
+        const instance = await boot(engine, {
+            image: { url: "ubuntu.iso", async: true, size: 99 },
+            bzimage, initrd, cmdline: "boot=casper console=ttyS0",
+        });
+        assert.equal(instance.options.bzimage, bzimage);
+        assert.equal(instance.options.initrd, initrd);
+        assert.equal(instance.options.cmdline, "boot=casper console=ttyS0");
+        assert.deepEqual(instance.options.cdrom, { url: "ubuntu.iso", async: true, size: 99 });
+        assert.equal(instance.options.bzimage_initrd_from_filesystem, undefined);
+    });
+});
+
+test("serial output bytes are forwarded to the application", async () => {
+    const bytes = [];
+    await fixture(async ({ engine }) => {
+        engine.hooks.onSerial = (byte) => bytes.push(byte);
+        const instance = await boot(engine);
+        instance.emit("serial0-output-byte", 65);
+        instance.emit("serial0-output-byte", 10);
+        assert.deepEqual(bytes, [65, 10]);
+    });
+});
+
 test("demand-loaded Linux boots its kernel from the 9p filesystem, not a fake ISO descriptor", async () => {
     await fixture(async ({ engine }) => {
         const filesystem = { baseurl: "assets/guest/rootfs/", basefs: { url: "assets/guest/fs.json" } };

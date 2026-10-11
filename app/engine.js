@@ -170,7 +170,14 @@ export class VmEngine {
             options.cmdline = config.cmdline;
         } else {
             const deviceKey = config.device || "cdrom";
-            options[deviceKey] = config.image;
+            if (config.image) options[deviceKey] = config.image;
+            // Ubuntu/Mint live ISOs: boot the extracted bzImage and keep the CD
+            // attached so casper/live-boot can still find the squashfs.
+            if (config.bzimage) {
+                options.bzimage = config.bzimage;
+                if (config.initrd) options.initrd = config.initrd;
+                if (config.cmdline) options.cmdline = config.cmdline;
+            }
         }
         if (config.hardDisk) {
             options.hda = config.hardDisk;
@@ -261,6 +268,10 @@ export class VmEngine {
             const [width, height, bpp] = size;
             this.hooks.onScreenSize?.(width, height, bpp);
         });
+
+        on("serial0-output-byte", (byte) => {
+            this.hooks.onSerial?.(byte);
+        });
     }
 
     async #readyInstance() {
@@ -338,6 +349,20 @@ export class VmEngine {
         } catch {
             /* ignore */
         }
+    }
+
+    /** Send a single Enter key (ISOLINUX/GRUB “boot this entry”). */
+    async sendEnter() {
+        const instance = await this.#readyInstance();
+        if (!this.isRunning) throw new Error("Resume the guest before sending keys.");
+        const wasEnabled = this.keyboardEnabled;
+        try {
+            this.setKeyboardEnabled(true);
+            instance.keyboard_send_scancodes?.([0x1c, 0x9c]);
+        } finally {
+            this.setKeyboardEnabled(wasEnabled);
+        }
+        this.#log("Sent Enter to the guest.");
     }
 
     /** Send Ctrl+Alt+Delete to the guest (login managers, DOS reboots…). */

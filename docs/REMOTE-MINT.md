@@ -18,9 +18,11 @@ browser emulator, not a cloud computer. A Mint-looking wallpaper would not chang
 * **Start desktop** boots the bundled 1.4 MB **KolibriOS** graphical desktop in a click.
   It is a genuine guest OS, **not Mint and not Linux**.
 * **Linux terminal** boots the bundled small Linux system.
-* **Explore Mint** explains the legacy/security limits before checking streaming sources.
-  The app tries the Node host's named relay, then direct mirrors. It requires a real HTTP
-  `206` response with an exposed, valid `Content-Range`. If that fails, it stops.
+* **Ubuntu 18.04** / **Explore Mint** explain the legacy/security limits before checking
+  streaming sources. The app tries the Node host's named relay, then direct mirrors. It
+  requires a real HTTP `206` response with an exposed, valid `Content-Range`. If that
+  fails, it stops. After a source is verified, the emulator extracts `casper/vmlinuz`
+  and the initrd from the ISO and boots that kernel directly.
 * **Stream URL** accepts your own CORS + Range-enabled image host. **Streaming only** is
   checked by default. A server that advertises ranges but sends the whole image is not
   accepted as a streaming source. Non-streaming RAM downloads are bounded at 512 MB even

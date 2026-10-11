@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WebVM — your browser computer</title>
-<meta name="description" content="Your own browser computer: launch a real desktop, stream 32-bit Linux images without saving an ISO, and optionally remember a session. Powered by v86.">
+<meta name="description" content="Your own browser computer: boot Alpine instantly, or stream Ubuntu 18.04 and Linux Mint 19.3 without saving an ISO. Direct live-kernel boot, powered by v86.">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#101719">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1020'/%3E%3Crect x='14' y='18' width='36' height='24' rx='3' fill='none' stroke='%2364d2ff' stroke-width='3'/%3E%3Crect x='22' y='46' width='20' height='4' rx='2' fill='%2364d2ff'/%3E%3C/svg%3E">
@@ -224,19 +224,24 @@
                             <svg viewBox="0 0 48 48" width="42" height="42" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="8" width="36" height="25" rx="3"/><path d="M16 41h16m-8-8v8m-11-8h22m-21-15 4 4-4 4m8 0h7"/></svg>
                         </span>
                         <p class="eyebrow">A COMPUTER OF YOUR OWN</p>
-                        <h2>A little space.<br>A Linux computer.</h2>
-                        <p class="welcome-copy">A real Alpine Linux desktop with Dillo already installed. Open the browser, explore files, use the terminal. No installation or giant ISO to save.</p>
+                        <h2>A little space.<br>Ubuntu, Mint, Linux.</h2>
+                        <p class="welcome-copy">Alpine boots a real desktop here in one click. Ubuntu 18.04 and Linux Mint 19.3 stream without saving an ISO — the emulator reads the live kernel out of the disc and boots it directly.</p>
                         <div class="welcome-actions">
                             <button class="btn primary" data-quick-launch="alpine-browser" type="button">Linux + browser <span aria-hidden="true">→</span></button>
                             <button class="btn" data-quick-launch="kolibrios" type="button">Instant desktop</button>
                             <button class="btn ghost" data-quick-launch="tiny-linux" type="button">Linux terminal</button>
                         </div>
                         <label class="check quick-network"><input id="quick-linux-internet" type="checkbox"><span>Try guest internet through the public relay <small>Optional third-party service. No private accounts.</small></span></label>
-                        <p class="welcome-footnote">Dillo opens a local page first. Internet needs an optional relay; JavaScript-heavy sites need a full browser elsewhere. The instant desktop is KolibriOS, not Linux.</p>
-                        <div class="mint-launch">
-                            <span class="mint-mark" aria-hidden="true">lm</span>
-                            <div><strong>Prefer Linux Mint?</strong><span>Stream the legacy 32-bit edition. No ISO file on your disk.</span></div>
-                            <button class="btn ghost" id="quick-mint" type="button">Explore Mint →</button>
+                        <p class="welcome-footnote">Dillo opens a local page first. Internet needs an optional relay; JavaScript-heavy sites need a full browser elsewhere. The instant desktop is KolibriOS, not Linux. Ubuntu and Mint are legacy 32-bit live ISOs.</p>
+                        <div class="family-launch">
+                            <button class="family-card" id="quick-ubuntu" type="button">
+                                <span class="os-mark ubuntu-mark" aria-hidden="true">ub</span>
+                                <span><strong>Ubuntu 18.04</strong><em>Stream 32-bit desktop · no ISO file</em></span>
+                            </button>
+                            <button class="family-card" id="quick-mint" type="button">
+                                <span class="os-mark mint-mark" aria-hidden="true">lm</span>
+                                <span><strong>Linux Mint 19.3</strong><em>Stream Xfce · no ISO file</em></span>
+                            </button>
                         </div>
                         <div class="saved-session" id="saved-session" hidden>
                             <div><span class="eyebrow">PICK UP WHERE YOU LEFT OFF</span><strong id="session-name"></strong><span id="session-summary"></span></div>
@@ -252,6 +257,17 @@
                     </div>
                 </div>
                 <div class="paused-banner" id="paused-banner" hidden>Paused — press Resume to continue</div>
+                <div class="guest-boot-hint" id="guest-boot-hint" hidden>
+                    <div>
+                        <strong id="guest-boot-title">Linux is still starting</strong>
+                        <span id="guest-boot-copy">Live Ubuntu/Mint desktops can take many minutes. A moving CPU counter means it is working.</span>
+                        <code id="guest-boot-serial"></code>
+                    </div>
+                    <div class="guest-boot-actions">
+                        <button class="btn ghost tiny" id="guest-boot-enter" type="button">Send Enter</button>
+                        <button class="btn ghost tiny" id="guest-boot-dismiss" type="button">Hide</button>
+                    </div>
+                </div>
                 <div class="input-tip" id="input-tip" hidden>Click the screen to control <span>·</span> <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>G</kbd> to release</div>
             </div>
 
@@ -269,6 +285,7 @@
                     <div class="tools-popover">
                         <button class="btn ghost" id="btn-screenshot" type="button" disabled>Screenshot</button>
                         <button class="btn ghost" id="btn-paste" type="button" disabled>Paste from clipboard</button>
+                        <button class="btn ghost" id="btn-enter" type="button" disabled>Send Enter</button>
                         <button class="btn ghost" id="btn-cad" type="button" disabled>Ctrl+Alt+Del</button>
                         <button class="btn ghost" id="btn-type" type="button" disabled>Type text…</button>
                         <button class="btn ghost" id="btn-session-save" type="button" disabled>Save session here…</button>
@@ -344,16 +361,20 @@
     <div class="row"><button class="btn primary" id="storage-explore-mint" type="button">Explore legacy Mint</button><a class="btn" data-repo-link data-repo-path="docs/REMOTE-MINT.md" href="#" target="_blank" rel="noopener">Remote Mint guide ↗</a></div>
 </dialog>
 
-<dialog class="info-dialog" id="mint-dialog" aria-labelledby="mint-title">
-    <div class="dialog-heading"><span class="eyebrow">LINUX MINT · EXPERIMENTAL</span><button class="btn ghost" id="mint-close" type="button" aria-label="Close Mint setup">✕</button></div>
-    <div class="dialog-os"><span class="mint-mark" aria-hidden="true">lm</span><h2 id="mint-title">Mint, without saving an ISO.</h2></div>
+<dialog class="info-dialog" id="legacy-dialog" aria-labelledby="legacy-title">
+    <div class="dialog-heading"><span class="eyebrow" id="legacy-eyebrow">LINUX · EXPERIMENTAL</span><button class="btn ghost" id="legacy-close" type="button" aria-label="Close setup">✕</button></div>
+    <div class="dialog-os"><span class="os-mark mint-mark" id="legacy-mark" aria-hidden="true">lm</span><h2 id="legacy-title">Mint, without saving an ISO.</h2></div>
     <p>We’ll check for a server image relay, then a direct mirror with CORS and real byte-range support. If neither works, we stop — <strong>no automatic multi-GB download</strong>.</p>
-    <div class="legacy-warning"><strong>Legacy Mint 19.3 Xfce · 32-bit</strong><p>This release no longer receives security updates. Use it for experiments, not private accounts or everyday work. Mint 20+ cannot boot in v86.</p></div>
-    <p class="hint">A successful source check only proves streaming. A live desktop may take many minutes and needs 512 MB guest RAM plus emulator overhead. It is temporary, not an installed remote computer.</p>
-    <label class="check"><input type="checkbox" id="mint-ack"><span>I understand this is an unsupported, experimental guest.</span></label>
-    <p id="mint-stream-status" role="status" aria-live="polite"></p>
-    <div class="row"><button class="btn primary" id="mint-stream" type="button" disabled>Stream legacy Mint →</button><button class="btn" id="mint-cancel" type="button">Not now</button></div>
-    <p class="hint">For current Mint with permanent server storage, see the <a data-repo-link data-repo-path="docs/REMOTE-MINT.md" href="#" target="_blank" rel="noopener">remote VM guide</a>.</p>
+    <div class="legacy-warning"><strong id="legacy-warning-title">Legacy 32-bit live ISO</strong><p id="legacy-warning-body">This release no longer receives security updates. Use it for experiments, not private accounts or everyday work. 64-bit releases cannot boot in v86.</p></div>
+    <p class="hint">The emulator then reads the live kernel (casper/vmlinuz) from the ISO with Range requests and boots it directly, so you do not have to drive the CD boot menu. A desktop may still take many minutes and needs 512 MB guest RAM plus emulator overhead. Guest files are temporary.</p>
+    <label class="check"><input type="checkbox" id="legacy-ack"><span>I understand this is an unsupported, experimental guest.</span></label>
+    <p id="legacy-stream-status" role="status" aria-live="polite"></p>
+    <div class="row">
+        <button class="btn primary" id="legacy-stream" type="button" disabled>Stream and boot →</button>
+        <button class="btn ghost" id="legacy-alt" type="button" hidden>Use lighter Lubuntu instead</button>
+        <button class="btn" id="legacy-cancel" type="button">Not now</button>
+    </div>
+    <p class="hint">For a current 64-bit desktop with permanent server storage, see the <a data-repo-link data-repo-path="docs/REMOTE-MINT.md" href="#" target="_blank" rel="noopener">remote VM guide</a>.</p>
 </dialog>
 
 <script src="assets/v86/libv86.js"></script>

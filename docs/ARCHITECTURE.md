@@ -7,6 +7,7 @@ The optional Node host adds a named-image relay, not a remote VM.
 ```
 index.html ──┬─► app/app.js      interface: picker, sources, controls, zoom, input capture
              │      ├─► app/catalog.js   the operating-system catalogue (pure data)
+             │      ├─► app/iso9660.js   live kernel/initrd extraction from streamed ISOs
              │      ├─► app/sources.js   where disk images come from, URL probing, streaming
              │      ├─► app/engine.js    one v86 instance: boot/run/pause/reset/state/screenshot
              │      ├─► app/input.js     explicit screen focus / host shortcuts
@@ -21,7 +22,9 @@ index.html ──┬─► app/app.js      interface: picker, sources, controls,
 1. `libv86.js` is a classic script, so `window.V86` exists before the module runs.
 2. `VmEngine.boot(config)` assembles the v86 options: `wasm_path`, BIOS roms, memory, VGA
    memory, boot order, NIC/relay, the chosen image under its device key (`cdrom`, `fda`,
-   `hda`), and the optional second disk.
+   `hda`), the optional second disk, and — for Ubuntu/Mint live ISOs — an extracted
+   `bzimage` + `initrd` + kernel cmdline. The ISO remains attached as `cdrom` so casper
+   can read the squashfs. Serial bytes (`serial0-output-byte`) are forwarded to the UI.
 3. v86 is constructed with `autostart: false`. The wrapper waits for `emulator-ready`,
    checks that the same instance is still attached, then starts the CPU if requested.
    A cancelled or failed load therefore cannot start a late, orphan CPU. Loading has a

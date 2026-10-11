@@ -5,9 +5,10 @@
  */
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { getEntry } from "../app/catalog.js";
+import { RELAY_IDS, getEntry } from "../app/catalog.js";
 
 export const MINT_ID = "mint-19.3-xfce-32";
+export { RELAY_IDS };
 export const MAX_RANGE_BYTES = 4 * 1024 * 1024;
 const CORS = {
     "Cache-Control": "no-store",
@@ -31,6 +32,15 @@ export function defaultMintUrls() {
     return getEntry(MINT_ID).links.filter((link) => link.kind === "direct").map((link) => link.url);
 }
 
+export function defaultRelayImages() {
+    const images = new Map();
+    for (const id of RELAY_IDS) {
+        const urls = getEntry(id)?.links.filter((link) => link.kind === "direct").map((link) => link.url) || [];
+        if (urls.length) images.set(id, urls);
+    }
+    return images;
+}
+
 function validateUpstream(url) {
     const parsed = new URL(url);
     if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) {
@@ -39,9 +49,17 @@ function validateUpstream(url) {
     return parsed.href;
 }
 
-export function createImageRelay({ mintUrls = defaultMintUrls(), fetchImpl = fetch, timeoutMs = 15_000 } = {}) {
+export function createImageRelay({ images, mintUrls, fetchImpl = fetch, timeoutMs = 15_000 } = {}) {
     // Configuration belongs to the server operator, never to an incoming request.
-    const images = new Map([[MINT_ID, mintUrls.map(validateUpstream)]]);
+    // Tests pass mintUrls alone (Mint-only map). The Node host passes `images`.
+    const map = new Map();
+    if (images) {
+        for (const [id, urls] of images) map.set(id, urls.map(validateUpstream));
+    } else {
+        map.set(MINT_ID, (mintUrls || defaultMintUrls()).map(validateUpstream));
+    }
+    if (mintUrls && images) map.set(MINT_ID, mintUrls.map(validateUpstream));
+    const images_ = map;
     let active = 0;
 
     const reply = (req, res, status, message) => {
@@ -66,13 +84,13 @@ export function createImageRelay({ mintUrls = defaultMintUrls(), fetchImpl = fet
             return true;
         }
         if (url.pathname === "/api/stream-images") {
-            const body = JSON.stringify({ images: [...images.keys()].map((id) => ({ id, url: `api/images/${id}.iso` })) });
+            const body = JSON.stringify({ images: [...images_.keys()].map((id) => ({ id, url: `api/images/${id}.iso` })) });
             res.writeHead(200, { ...CORS, "Content-Type": "application/json; charset=utf-8" });
             res.end(req.method === "HEAD" ? undefined : body);
             return true;
         }
         const id = /^\/api\/images\/([a-z0-9.-]+)\.iso$/.exec(url.pathname)?.[1];
-        const upstreamUrls = images.get(id);
+        const upstreamUrls = images_.get(id);
         if (!upstreamUrls?.length) {
             reply(req, res, 404, "This image is not configured on this server.");
             return true;
@@ -147,7 +165,7 @@ export function createImageRelay({ mintUrls = defaultMintUrls(), fetchImpl = fet
                 } catch {
                     await response?.body?.cancel?.().catch(() => {});
                     if (res.headersSent) { res.destroy(); return true; }
-                    lastError = "The server cannot reach the image mirror. Check its network access or configure MINT_ISO_URL.";
+                    lastError = "The server cannot reach the image mirror. Check its network access or configure UBUNTU_ISO_URL / MINT_ISO_URL.";
                 }
             }
             reply(req, res, 502, controller.signal.aborted ? "The image mirror timed out. No full ISO was downloaded." : lastError);

@@ -38,21 +38,25 @@ These are hosting patterns, not availability guarantees. Always use **Check link
 headers can vary across hosts, redirects and deployments. You do not have to store a
 large ISO on your device when streaming works.
 
-## Optional Node Mint relay
+## Optional Node Ubuntu / Mint relay
 
-`npm start` includes a diskless relay for the named legacy Mint 19.3 image. It forwards
-only bounded, verified ranges, never a full ISO, and no user-supplied URL can turn it into
-an open proxy. A trusted alternate upstream can be configured by the server operator:
+`npm start` includes a diskless relay for named catalogue images (Ubuntu 18.04.5 i386,
+Mint 19.3 Xfce 32-bit, Lubuntu 18.04.5 i386). It forwards only bounded, verified ranges,
+never a full ISO, and no user-supplied URL can turn it into an open proxy. A trusted
+alternate upstream can be configured by the server operator:
 
 ```bash
-MINT_ISO_URL="https://your-host.example/linuxmint-19.3-xfce-32bit.iso" npm start
+MINT_ISO_URL="https://your-host.example/linuxmint-19.3-xfce-32bit.iso" \
+UBUNTU_ISO_URL="https://your-host.example/ubuntu-18.04.5-desktop-i386.iso" \
+  npm start
 ```
 
 The upstream must actually return `206`, an exact `Content-Range`, a matching length and
 uncompressed binary bytes. The server must be able to reach it. Responses use `no-store`;
 there is no server disk cache. Source checks prove transport, not ISO authenticity —
-verify images before hosting them. **Explore Mint** tries this relative endpoint first.
-GitHub Pages cannot run the relay; direct CORS-enabled streaming still works there.
+verify images before hosting them. **Ubuntu 18.04** / **Explore Mint** try
+`api/images/<id>.iso` first. GitHub Pages cannot run the relay; direct CORS-enabled
+streaming still works there.
 Details and the separate remote-VM route: [REMOTE-MINT.md](REMOTE-MINT.md).
 
 ## GitHub Releases (the easiest host for a big ISO)

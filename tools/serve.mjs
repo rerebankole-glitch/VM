@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Dependency-free static host + optional, diskless, named-image relay.
- * node tools/serve.mjs [--port 8080] [--host 0.0.0.0] [--mint-url https://host/image.iso]
+ * node tools/serve.mjs [--port 8080] [--host 0.0.0.0] [--mint-url https://host/image.iso] [--ubuntu-url https://host/ubuntu.iso]
  * GitHub Pages still works as a static-only deployment; it has no relay.
  */
 import http from "node:http";
@@ -9,7 +9,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createImageRelay } from "./image-relay.mjs";
+import { createImageRelay, defaultRelayImages } from "./image-relay.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MIME = {
@@ -97,13 +97,19 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const port = Number(arg("port", process.env.PORT || 8080));
     const host = arg("host", "0.0.0.0");
     const mintUrl = arg("mint-url", process.env.MINT_ISO_URL);
-    const server = createVmServer({ relayOptions: mintUrl ? { mintUrls: [mintUrl] } : undefined });
+    const ubuntuUrl = arg("ubuntu-url", process.env.UBUNTU_ISO_URL);
+    const lubuntuUrl = arg("lubuntu-url", process.env.LUBUNTU_ISO_URL);
+    const images = defaultRelayImages();
+    if (mintUrl) images.set("mint-19.3-xfce-32", [mintUrl]);
+    if (ubuntuUrl) images.set("ubuntu-18.04.5-i386", [ubuntuUrl]);
+    if (lubuntuUrl) images.set("lubuntu-18.04.5-i386", [lubuntuUrl]);
+    const server = createVmServer({ relayOptions: { images } });
     server.on("error", (error) => { console.error(`Could not listen on ${host}:${port} — ${error.message}`); process.exit(1); });
     server.listen(port, host, () => {
         console.log("WebVM");
         console.log(`  local:   http://localhost:${port}/`);
         console.log(`  serving: ${ROOT}`);
-        console.log("  Mint:    diskless byte-range relay (requires access to the configured mirror)");
+        console.log("  Relay:   diskless Ubuntu/Mint/Lubuntu byte ranges (needs outbound access to mirrors)");
     });
     for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.close(() => process.exit(0)));
 }

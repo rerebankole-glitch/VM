@@ -35,20 +35,23 @@ npm start          # serves http://localhost:8080 — or: python3 -m http.server
 Open the URL and click **Linux + browser**: Alpine Linux boots a real Fluxbox desktop
 with **Dillo already installed**, opening a local welcome page. Linux loads compressed
 filesystem files on demand from this site — about 72 MiB in total, no large ISO to
-save. Allow a few minutes for a cold Linux browser boot. **Instant desktop**
-launches KolibriOS; **Linux terminal** launches the small console Linux. You can also
-pick a system and press **Boot**.
+save. Allow a few minutes for a cold Linux browser boot. **Ubuntu 18.04** and
+**Linux Mint 19.3** stream a 32-bit live ISO without saving it: the emulator reads
+`casper/vmlinuz` and the initrd with HTTP Range requests and boots that kernel
+directly (no ISOLINUX menu). **Instant desktop** launches KolibriOS; **Linux terminal**
+launches the small console Linux. You can also pick a system and press **Boot**.
 
 Dillo supports basic pages and HTTPS, **not JavaScript-heavy sites**. Guest internet
 requires an explicitly selected external relay; the local welcome page works offline.
 Guest changes are temporary, and browser-session saving is not supported for the new
 filesystem profile yet. See [the Linux browser guide](docs/LINUX-BROWSER.md).
 
-**Explore Mint** checks streaming sources after explaining the legacy/security limits.
-With `npm start`, it first tries the Node host's byte-range relay, then direct mirrors.
-The host must be able to reach a suitable image server. With GitHub Pages, there is no
-relay backend. If streaming is unavailable the app stops, without a whole-ISO download.
-Configure an alternate trusted legacy image with `MINT_ISO_URL` or `--mint-url`;
+**Ubuntu 18.04** / **Explore Mint** explain the legacy/security limits, then check
+streaming sources. With `npm start`, they first try the Node host's named byte-range
+relay, then direct mirrors. The host must be able to reach a suitable image server.
+With GitHub Pages, there is no relay backend. If streaming is unavailable the app
+stops, without a whole-ISO download. Configure an alternate trusted image with
+`UBUNTU_ISO_URL`, `MINT_ISO_URL`, `--ubuntu-url` or `--mint-url`;
 see [docs/REMOTE-MINT.md](docs/REMOTE-MINT.md).
 
 ### On GitHub Pages
@@ -80,8 +83,9 @@ distros dropped 32-bit builds.**
 | **KolibriOS** (built in) | 0.7.7.0 | 1.4 MB | Full GUI desktop, boots in seconds |
 | **FreeDOS** (built in) | 7.22 | 720 KB | Instant DOS prompt |
 | **MX Linux** | `MX-19.4_386.iso` | 1.7 GB | Real Xfce desktop, slow boot |
-| **Lubuntu** | `lubuntu-18.04.5-desktop-i386.iso` | 1.1 GB | Lightest of the Ubuntu family |
-| **Linux Mint** | `linuxmint-19.3-xfce-32bit.iso` | 1.8 GB | Unsupported legacy Xfce; slow experimental candidate, boot not guaranteed |
+| **Ubuntu** | `ubuntu-18.04.5-desktop-i386.iso` | ≈1.9 GB | Last 32-bit Ubuntu Desktop; direct casper kernel boot; GNOME is heavy |
+| **Lubuntu** | `lubuntu-18.04.5-desktop-i386.iso` | 1.1 GB | Lightest of the Ubuntu family; same direct-kernel path |
+| **Linux Mint** | `linuxmint-19.3-xfce-32bit.iso` | 1.8 GB | Unsupported legacy Xfce; direct casper kernel boot; slow, not guaranteed |
 | **antiX** | `antiX-26.1_386-full.iso` | ≈2.3 GB | Firefox ESR included in full; experimental, not boot-verified here |
 | **Debian** | 12 “bookworm” live i386 | 2.9 GB | Full Debian, security supported |
 | **Tiny Core Linux** | `TinyCore-current.iso` | 17 MB | Tiny and fast |
@@ -154,8 +158,9 @@ An emulated CPU is roughly **10–50× slower** than the host. Rough guidance:
 * KolibriOS, FreeDOS and the small console Linux boot quickly.
 * The Alpine browser desktop needs more time; expect a minute or more on a slow device.
 * Other small Linux images vary with guest services and the host CPU.
-* MX 19.4, antiX, Lubuntu 18.04, Mint 19.3 live desktops: **several minutes to tens of
-  minutes** for the first boot; the desktop is usable for exploring, not for work.
+* Ubuntu 18.04, Lubuntu 18.04, Mint 19.3, MX 19.4 live desktops: **several minutes to
+  tens of minutes** even with direct kernel boot; the desktop is usable for exploring,
+  not for work. Serial lines in the activity log are kernel messages, not a freeze.
 
 The status bar shows a live MIPS figure. If a boot looks stuck, it usually is not — the
 log panel shows progress and the CPU counter tells you whether the guest is still working.
@@ -170,6 +175,7 @@ app/
   sessions.js              opt-in, bounded IndexedDB snapshots and metadata validation
   engine.js                wrapper around one v86 instance (boot/run/pause/reset/state)
   catalog.js               the operating-system catalogue (pure data — edit this to add distros)
+  iso9660.js               live-kernel extraction from streamed Ubuntu/Mint ISOs
   sources.js               on-demand filesystem / disk images, URL probing, streaming
   styles.css               dark responsive theme (+ the markup contract v86 needs)
   util.js                  formatting and storage helpers
@@ -196,10 +202,12 @@ same `libv86.js` the browser uses (v86 has a Node mode, so this needs no browser
    starts it. v86's WASM core translates x86 instructions to WebAssembly at runtime.
 3. The screen lives in `#screen_container`: v86 writes text mode into a `<div>` and
    graphical modes into a `<canvas>`; the interface scales that pair to fit the viewport.
-4. The featured Alpine desktop loads compressed 9p filesystem files on demand. Other
-   disk images arrive as a bundled file, a local `File` read block-by-block when large,
-   or a URL using proven HTTP Range requests. The optional Node relay solves mirror CORS
-   without hosting a VM or saving the full ISO.
+4. The featured Alpine desktop loads compressed 9p filesystem files on demand. Ubuntu
+   and Mint live ISOs are scanned with ISO 9660 Range reads for `casper/vmlinuz` +
+   initrd, then booted as a v86 bzImage with the CD still attached for the squashfs.
+   Other disk images arrive as a bundled file, a local `File` read block-by-block when
+   large, or a URL using proven HTTP Range requests. The optional Node relay solves
+   mirror CORS without hosting a VM or saving the full ISO.
 5. Guest networking is optional: `inbrowser` is a built-in virtual LAN, or you can point it
    at a [wsproxy](https://github.com/copy/v86/blob/master/docs/networking.md) relay for real
    internet access.

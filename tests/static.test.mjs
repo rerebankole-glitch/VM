@@ -97,7 +97,7 @@ test("every v86 method the app calls exists in the vendored build", () => {
     const engineMethods = new Set([
         "boot", "run", "pause", "reset", "destroy", "setKeyboardEnabled", "setMouseEnabled",
         "releaseModifiers", "sendCtrlAltDel", "sendText", "screenshot", "lockMouse", "goFullscreen",
-        "instructionCounter", "uptimeMs", "saveState", "restoreState", "setImage", "eject",
+        "instructionCounter", "uptimeMs", "saveState", "restoreState", "setImage", "eject", "sendEnter",
     ]);
 
     const toCheck = [...methods].filter((name) => !ignored.has(name) && !engineMethods.has(name));
@@ -110,7 +110,7 @@ test("every v86 method the app calls exists in the vendored build", () => {
 test("the app never uses root-absolute URLs (GitHub Pages project sites live in a sub-path)", () => {
     const offenders = [...html.matchAll(/(?:src|href)="(\/[^/][^"]*)"/g)].map((m) => m[1]);
     assert.deepEqual(offenders, [], `root-absolute paths break under /<repo>/ on GitHub Pages: ${offenders.join(", ")}`);
-    for (const module of ["app/app.js", "app/engine.js", "app/sources.js"]) {
+    for (const module of ["app/app.js", "app/engine.js", "app/sources.js", "app/iso9660.js"]) {
         const source = read(module);
         assert.ok(!/from "\/[^.]/.test(source), `${module} imports from a root-absolute path`);
     }

@@ -6,7 +6,8 @@
  * the emulation, this module never touches v86 directly except through it.
  */
 
-import { CATALOG, UNSUPPORTED, getEntry } from "./catalog.js";
+import { CATALOG, RELAY_IDS, UNSUPPORTED, getEntry } from "./catalog.js";
+import { extractLiveLinux } from "./iso9660.js";
 import {
     BOOT_ORDERS, NET_BACKENDS, NIC_TYPES, VmEngine, describeError,
 } from "./engine.js";
@@ -81,6 +82,7 @@ const engine = new VmEngine({
         onLog: log,
         onProgress: handleProgress,
         onScreenSize: () => scheduleFit(),
+        onSerial: handleSerialByte,
     },
 });
 
@@ -214,6 +216,8 @@ function selectOs(id, { silent = false } = {}) {
         state.machine.memoryMB = entry.ramMB ?? state.machine.memoryMB;
         state.machine.vgaMB = entry.vgaMB ?? state.machine.vgaMB;
         state.machine.nicType = entry.nicType || (entry.status === "instant" && entry.family === "DOS" ? "ne2k" : state.machine.nicType);
+        if (typeof entry.acpi === "boolean") state.machine.acpi = entry.acpi;
+        if (entry.bootOrder) state.machine.bootOrder = entry.bootOrder;
         state.machine.tunedFor = id;
         applyMachineToForm();
     }
@@ -286,7 +290,7 @@ function renderDownloadBox(entry) {
         box.className = "os-download is-download";
         box.innerHTML = `
             <p class="os-download-title"><strong>${escapeHtml(entry.name)} ${escapeHtml(entry.version)}</strong></p>
-            ${entry.links.some((link) => link.kind === "direct") ? `<button class="btn primary" data-stream-os="${entry.id}" type="button">${entry.id === "mint-19.3-xfce-32" ? "Explore Mint streaming…" : "Stream & boot (no ISO to save)"}</button>` : ""}
+            ${entry.links.some((link) => link.kind === "direct") ? `<button class="btn primary" data-stream-os="${entry.id}" type="button">${streamButtonLabel(entry)}</button>` : ""}
             <p class="hint">Streaming needs verified byte ranges. If unavailable, it stops rather than saving a large ISO. Manual download links are below; local files are never uploaded.</p>
             ${linkRowHtml(entry)}`;
     } else {
@@ -297,6 +301,14 @@ function renderDownloadBox(entry) {
     }
     box.hidden = false;
 }
+
+function streamButtonLabel(entry) {
+    if (entry.id === "mint-19.3-xfce-32") return "Explore Mint streaming…";
+    if (entry.id.startsWith("ubuntu") || entry.id.startsWith("lubuntu")) return "Stream Ubuntu-family ISO…";
+    return "Stream & boot (no ISO to save)";
+}
+
+const LEGACY_CONFIRM_IDS = new Set(["ubuntu-18.04.5-i386", "mint-19.3-xfce-32", "lubuntu-18.04.5-i386"]);
 
 /* ------------------------------------------------------------------ *
  * Disk image panel
@@ -354,7 +366,7 @@ function buildDiskPanel() {
     document.addEventListener("click", (event) => {
         const button = event.target.closest?.("[data-stream-os]");
         if (!button || button.disabled) return;
-        if (button.dataset.streamOs === "mint-19.3-xfce-32") openMintDialog();
+        if (LEGACY_CONFIRM_IDS.has(button.dataset.streamOs)) openLegacyDialog(button.dataset.streamOs);
         else streamCatalogImage(button.dataset.streamOs);
     });
     $("#url-use").addEventListener("click", () => useRemoteUrl());
@@ -529,6 +541,9 @@ function buildMachinePanel() {
             ...defaults(),
             memoryMB: entry?.ramMB ?? 128,
             vgaMB: entry?.vgaMB ?? 8,
+            nicType: entry?.nicType || defaults().nicType,
+            acpi: Boolean(entry?.acpi),
+            bootOrder: entry?.bootOrder || "auto",
             tunedFor: state.selectedId,
         };
         storeJson(SETTINGS_KEY, state.machine);
@@ -704,6 +719,7 @@ function bindToolbar() {
         }).catch((error) => log(`Screenshot could not be downloaded: ${describeError(error)}`, "warn"));
     });
     $("#btn-cad").addEventListener("click", () => engine.sendCtrlAltDel());
+    $("#btn-enter").addEventListener("click", () => sendGuestEnter());
     $("#btn-state-save").addEventListener("click", () => saveState());
     $("#btn-state-load").addEventListener("click", () => $("#state-input").click());
     $("#state-input").addEventListener("change", (event) => {
@@ -886,13 +902,36 @@ async function bootMachine({ desktop = false, restoreBuffer = null } = {}) {
 
     try {
         log(`Booting ${entry ? `${entry.name} ${entry.version}` : "image"} as ${state.source.device}…`);
-        const { image, filesystem, cmdline, strategy } = await resolveImage(state.source, {
+        const { image, filesystem, cmdline: fsCmdline, strategy } = await resolveImage(state.source, {
             mode: state.source.kind === "url" ? "auto" : machine.diskMode,
             streamOnly: state.source.kind === "url" && (state.source.streamOnly || state.ui.streamOnly),
             onProgress: (loaded, total, label) => {
                 setProgress(loaded, total, `Loading ${label || "disk image"}…`);
             },
         });
+        let cmdline = fsCmdline;
+        let bzimage = null;
+        let initrd = null;
+        const canExtract = !restoreBuffer && !filesystem
+            && state.source.device === "cdrom"
+            && ((state.source.kind === "url" && canStream(state.source)) || (state.source.kind === "file" && state.source.file));
+        if (canExtract) {
+            setProgress(0, 1, "Looking for a live Linux kernel in the ISO…");
+            $("#boot-description").textContent = "Reading casper/live kernel files from the ISO. This skips the CD boot menu.";
+            log("Scanning the ISO for a live kernel (Ubuntu/Mint casper or Debian live)…");
+            try {
+                const extracted = await extractLiveLinux(state.source, entry?.live, {
+                    signal: streamController?.signal,
+                    onProgress: (loaded, total) => setProgress(loaded, total, "Reading live kernel and initrd…"),
+                });
+                bzimage = extracted.bzimage;
+                initrd = extracted.initrd;
+                cmdline = extracted.cmdline;
+                log(`Direct kernel boot: ${extracted.kernelPath} (${fmtBytes(extracted.kernelSize)}) + ${extracted.initrdPath} (${fmtBytes(extracted.initrdSize)}).`, "ok");
+            } catch (error) {
+                log(`Direct kernel boot unavailable (${describeError(error)}). Falling back to CD-ROM boot.`, "warn");
+            }
+        }
         // Optional second disk: an empty ArrayBuffer the guest can install onto,
         // or an existing image read into RAM (so writes are possible).
         let hardDisk = null;
@@ -915,7 +954,7 @@ async function bootMachine({ desktop = false, restoreBuffer = null } = {}) {
         $("#image-strategy").textContent = strategy;
 
         await engine.boot({
-            image, filesystem, cmdline,
+            image, filesystem, cmdline, bzimage, initrd,
             device: state.source.device,
             memoryMB: machine.memoryMB,
             vgaMB: machine.vgaMB,
@@ -930,8 +969,10 @@ async function bootMachine({ desktop = false, restoreBuffer = null } = {}) {
             autostart: !restoreBuffer,
         });
         if (restoreBuffer) { await engine.restoreState(restoreBuffer); await engine.run(); }
-        log(`Disk image: ${strategy}.`);
+        log(`Disk image: ${strategy}${bzimage ? " · live kernel extracted" : ""}.`);
         if (relayUrl) log(`Network backend: ${relayUrl}`);
+        if (entry?.live || entry?.status === "tricky") showGuestBootHint(entry, Boolean(bzimage));
+        if (!bzimage && entry?.live) scheduleBootMenuEnter();
     } catch (error) {
         if (engine.isAttached) await engine.destroy();
         state.active = null;
@@ -1034,6 +1075,7 @@ function handleEngineState(status, detail) {
         $("#mips").textContent = "— MIPS";
         $("#uptime").textContent = "—";
         $("#instructions").textContent = "—";
+        hideGuestBootHint();
     }
     scheduleFit();
 }
@@ -1041,7 +1083,7 @@ function handleEngineState(status, detail) {
 function refreshControls() {
     const busy = state.busy || state.sourceBusy || state.sessionBusy;
     const usable = engine.isAttached && ["running", "paused"].includes(engine.state) && !busy;
-    ["#btn-pause", "#btn-reset", "#btn-power", "#btn-screenshot", "#btn-cad", "#btn-state-save", "#btn-state-load", "#btn-type", "#btn-paste"].forEach((selector) => { $(selector).disabled = !usable; });
+    ["#btn-pause", "#btn-reset", "#btn-power", "#btn-screenshot", "#btn-cad", "#btn-enter", "#btn-state-save", "#btn-state-load", "#btn-type", "#btn-paste"].forEach((selector) => { $(selector).disabled = !usable; });
     $("#btn-pause").textContent = engine.isRunning ? "Pause" : "Resume";
     $("#btn-grab-mouse").disabled = !engine.isRunning || busy;
     $("#btn-session-save").disabled = !usable || !sessionStore.supported || !canRememberSession(state.active);
@@ -1052,6 +1094,9 @@ function refreshControls() {
     $("#setup-lock-note").hidden = !engine.isAttached;
     $$("[data-quick-launch]").forEach((button) => { button.disabled = engine.isAttached || busy; });
     $("#quick-mint").disabled = engine.isAttached || busy;
+    $("#quick-ubuntu").disabled = engine.isAttached || busy;
+    const bootEnter = $("#guest-boot-enter");
+    if (bootEnter) bootEnter.disabled = !engine.isRunning || busy;
     $("#quick-linux-internet").disabled = engine.isAttached || busy;
     $("#btn-session-resume").disabled = engine.isAttached || busy;
     $("#btn-session-delete").disabled = busy;
@@ -1107,6 +1152,79 @@ function showError(message) {
     box.hidden = false;
     $("#error-text").textContent = message;
     log(message, "error");
+}
+
+/* ------------------------------------------------------------------ *
+ * Serial console + live-ISO boot hint
+ * ------------------------------------------------------------------ */
+
+let serialLine = "";
+let serialLogged = 0;
+let bootMenuTimer = 0;
+const SERIAL_NOTEWORTHY = /panic|oops|error|fail|casper|squashfs|initramfs|lightdm|gdm|sddm|login:|reached target|gave up|alert|ubuntu|mint|busybox|kernel|nomodeset|unable to mount/i;
+
+function handleSerialByte(byte) {
+    if (byte === 13) return;
+    if (byte === 10) {
+        const line = serialLine.trim();
+        serialLine = "";
+        if (!line) return;
+        const serialEl = $("#guest-boot-serial");
+        if (serialEl) serialEl.textContent = line.slice(-160);
+        const bootDesc = $("#boot-description");
+        if (bootDesc && !$("#boot-card").hidden) bootDesc.textContent = line.slice(-180);
+        if (SERIAL_NOTEWORTHY.test(line) || serialLogged % 20 === 0) {
+            log(line.slice(0, 220), "serial");
+        }
+        serialLogged += 1;
+        if (/lightdm|gdm|sddm|reached target graphical|started session|login:/i.test(line)) {
+            hideGuestBootHint();
+        }
+        return;
+    }
+    if (byte >= 32 && byte < 127) {
+        serialLine += String.fromCharCode(byte);
+        if (serialLine.length > 240) serialLine = serialLine.slice(-120);
+    }
+}
+
+function showGuestBootHint(entry, directKernel) {
+    const hint = $("#guest-boot-hint");
+    if (!hint) return;
+    $("#guest-boot-title").textContent = `${entry?.name || "Linux"} is still starting`;
+    $("#guest-boot-copy").textContent = directKernel
+        ? "The live kernel is running. A desktop can take 5–40 minutes in this emulator. The CPU counter moving means it is working."
+        : "Booting from the CD menu. Press Send Enter if you see a boot loader. Live desktops can take many minutes.";
+    $("#guest-boot-serial").textContent = "";
+    hint.hidden = false;
+}
+
+function hideGuestBootHint() {
+    const hint = $("#guest-boot-hint");
+    if (hint) hint.hidden = true;
+    if (bootMenuTimer) {
+        clearTimeout(bootMenuTimer);
+        bootMenuTimer = 0;
+    }
+}
+
+function scheduleBootMenuEnter() {
+    if (bootMenuTimer) clearTimeout(bootMenuTimer);
+    bootMenuTimer = window.setTimeout(() => {
+        bootMenuTimer = 0;
+        if (engine.isRunning) {
+            sendGuestEnter().catch(() => {});
+            log("Sent Enter to the guest boot menu (live ISO fallback).");
+        }
+    }, 8000);
+}
+
+async function sendGuestEnter() {
+    try {
+        await engine.sendEnter();
+    } catch (error) {
+        log(`Could not send Enter: ${describeError(error)}`, "warn");
+    }
 }
 
 /* ------------------------------------------------------------------ *
@@ -1193,28 +1311,77 @@ function bindDesktopControls() {
 function bindDialogs() {
     $("#btn-storage-help").addEventListener("click", () => { screenInput.release(); $("#storage-dialog").showModal(); });
     $("#storage-close").addEventListener("click", () => $("#storage-dialog").close());
-    $("#storage-explore-mint").addEventListener("click", () => { $("#storage-dialog").close(); openMintDialog(); });
-    $("#quick-mint").addEventListener("click", openMintDialog);
-    const closeMint = () => { streamController?.abort(); $("#mint-dialog").close(); };
-    $("#mint-close").addEventListener("click", closeMint);
-    $("#mint-cancel").addEventListener("click", closeMint);
-    $("#mint-dialog").addEventListener("cancel", () => streamController?.abort());
-    $("#mint-ack").addEventListener("change", () => { $("#mint-stream").disabled = !$("#mint-ack").checked || state.sourceBusy; });
-    $("#mint-stream").addEventListener("click", () => {
-        if ($("#mint-ack").checked) streamCatalogImage("mint-19.3-xfce-32");
+    $("#storage-explore-mint").addEventListener("click", () => { $("#storage-dialog").close(); openLegacyDialog("mint-19.3-xfce-32"); });
+    $("#quick-mint").addEventListener("click", () => openLegacyDialog("mint-19.3-xfce-32"));
+    $("#quick-ubuntu").addEventListener("click", () => openLegacyDialog("ubuntu-18.04.5-i386"));
+    const closeLegacy = () => { streamController?.abort(); $("#legacy-dialog").close(); };
+    $("#legacy-close").addEventListener("click", closeLegacy);
+    $("#legacy-cancel").addEventListener("click", closeLegacy);
+    $("#legacy-dialog").addEventListener("cancel", () => streamController?.abort());
+    $("#legacy-ack").addEventListener("change", () => { $("#legacy-stream").disabled = !$("#legacy-ack").checked || state.sourceBusy; });
+    $("#legacy-stream").addEventListener("click", () => {
+        if ($("#legacy-ack").checked && state.legacyId) streamCatalogImage(state.legacyId);
     });
+    $("#legacy-alt").addEventListener("click", () => openLegacyDialog("lubuntu-18.04.5-i386"));
+    $("#guest-boot-dismiss").addEventListener("click", () => hideGuestBootHint());
+    $("#guest-boot-enter").addEventListener("click", () => sendGuestEnter());
+}
+
+const LEGACY_COPY = {
+    "ubuntu-18.04.5-i386": {
+        eyebrow: "UBUNTU 18.04 · EXPERIMENTAL",
+        mark: "ub",
+        markClass: "os-mark ubuntu-mark",
+        title: "Ubuntu, without saving an ISO.",
+        warningTitle: "Legacy Ubuntu 18.04.5 Desktop · 32-bit",
+        warningBody: "Ubuntu 18.04 is out of standard support. GNOME/Unity is heavy in this emulator — Lubuntu 18.04 (same base, LXDE) is the lighter path. Ubuntu 20.04+ cannot boot in v86.",
+        alt: true,
+    },
+    "lubuntu-18.04.5-i386": {
+        eyebrow: "LUBUNTU 18.04 · EXPERIMENTAL",
+        mark: "lu",
+        markClass: "os-mark ubuntu-mark",
+        title: "Lubuntu, without saving an ISO.",
+        warningTitle: "Legacy Lubuntu 18.04.5 · 32-bit LXDE",
+        warningBody: "18.04 is out of standard support. Use it for experiments, not private accounts. This is the lightest Ubuntu-family desktop that still has a 32-bit live ISO.",
+        alt: false,
+    },
+    "mint-19.3-xfce-32": {
+        eyebrow: "LINUX MINT · EXPERIMENTAL",
+        mark: "lm",
+        markClass: "os-mark mint-mark",
+        title: "Mint, without saving an ISO.",
+        warningTitle: "Legacy Mint 19.3 Xfce · 32-bit",
+        warningBody: "This release no longer receives security updates. Use it for experiments, not private accounts or everyday work. Mint 20+ cannot boot in v86.",
+        alt: false,
+    },
+};
+
+function openLegacyDialog(id) {
+    if (engine.isAttached || state.busy || state.sessionBusy || state.sourceBusy) {
+        log("Power off the current guest before choosing another image.", "warn");
+        return;
+    }
+    const entry = getEntry(id);
+    const copy = LEGACY_COPY[id];
+    if (!entry || !copy) return;
+    state.legacyId = id;
+    $("#legacy-eyebrow").textContent = copy.eyebrow;
+    $("#legacy-mark").textContent = copy.mark;
+    $("#legacy-mark").className = copy.markClass;
+    $("#legacy-title").textContent = copy.title;
+    $("#legacy-warning-title").textContent = copy.warningTitle;
+    $("#legacy-warning-body").textContent = copy.warningBody;
+    $("#legacy-alt").hidden = !copy.alt;
+    $("#legacy-ack").checked = false;
+    $("#legacy-stream").disabled = true;
+    $("#legacy-stream-status").textContent = "";
+    $("#legacy-stream-status").classList.remove("is-error");
+    $("#legacy-dialog").showModal();
 }
 
 function openMintDialog() {
-    if (engine.isAttached || state.busy || state.sessionBusy || state.sourceBusy) {
-        log("Power off the current guest before choosing a Mint image.", "warn");
-        return;
-    }
-    $("#mint-ack").checked = false;
-    $("#mint-stream").disabled = true;
-    $("#mint-stream-status").textContent = "";
-    $("#mint-stream-status").classList.remove("is-error");
-    $("#mint-dialog").showModal();
+    openLegacyDialog("mint-19.3-xfce-32");
 }
 
 async function streamCatalogImage(id) {
@@ -1222,21 +1389,22 @@ async function streamCatalogImage(id) {
     const entry = getEntry(id);
     const direct = entry?.links.filter((link) => link.kind === "direct").map((link) => link.url) || [];
     if (!direct.length) return;
-    const isMint = id === "mint-19.3-xfce-32";
-    const candidates = isMint ? [`api/images/${id}.iso`, ...direct] : direct;
+    const inDialog = Boolean($("#legacy-dialog")?.open);
+    const relayFirst = RELAY_IDS.includes(id);
+    const candidates = relayFirst ? [`api/images/${id}.iso`, ...direct] : direct;
     const controller = new AbortController();
     streamController = controller;
     state.sourceBusy = true;
     refreshControls();
-    $("#mint-stream").disabled = true;
-    $("#mint-ack").disabled = true;
-    $("#mint-stream-status").classList.remove("is-error");
+    $("#legacy-stream").disabled = true;
+    $("#legacy-ack").disabled = true;
+    $("#legacy-stream-status").classList.remove("is-error");
     let found = null;
     try {
         for (const [index, url] of candidates.entries()) {
             if (controller.signal.aborted) return;
-            const label = url.startsWith("api/") ? "the server image relay" : `mirror ${isMint ? index : index + 1}`;
-            if (isMint) $("#mint-stream-status").textContent = `Checking ${label}… You can cancel. No ISO file is being saved.`;
+            const label = url.startsWith("api/") ? "the server image relay" : `mirror ${relayFirst ? index : index + 1}`;
+            if (inDialog) $("#legacy-stream-status").textContent = `Checking ${label}… You can cancel. No ISO file is being saved.`;
             log(`Checking ${entry.name}: ${label}.`);
             const probe = await probeUrl(url, { signal: controller.signal });
             if (controller.signal.aborted) return;
@@ -1244,11 +1412,11 @@ async function streamCatalogImage(id) {
             log(`Streaming unavailable from ${label}: ${probe.error || "Byte ranges or image size were not verified."}`, "warn");
         }
         if (!found) {
-            const message = "No accessible streaming source was found. This host may be unable to reach Mint mirrors, or they may block CORS. " +
-                "No full ISO was downloaded. Configure the Node host’s MINT_ISO_URL, supply a CORS + Range-enabled URL, or use the instant desktop. Current Mint requires a separate remote 64-bit VM.";
-            if (isMint) {
-                $("#mint-stream-status").textContent = message;
-                $("#mint-stream-status").classList.add("is-error");
+            const message = `No accessible streaming source was found for ${entry.name}. This host may be unable to reach the mirrors, or they may block CORS. ` +
+                "No full ISO was downloaded. Configure the Node host’s image URL, supply a CORS + Range-enabled URL, or use the instant Alpine desktop. Current 64-bit Ubuntu/Mint need a separate remote VM.";
+            if (inDialog) {
+                $("#legacy-stream-status").textContent = message;
+                $("#legacy-stream-status").classList.add("is-error");
             } else showError(message);
             return;
         }
@@ -1269,19 +1437,19 @@ async function streamCatalogImage(id) {
         $("#disk-select").value = "none";
         $("#disk-select").dispatchEvent(new Event("change"));
         renderDiskPanel();
-        if (isMint) $("#mint-dialog").close();
+        if (inDialog) $("#legacy-dialog").close();
         log(`Streaming ready: ${entry.name} (${fmtBytes(found.size)} ISO; not saved locally).`, "ok");
         await bootMachine({ desktop: true });
     } catch (error) {
         if (!controller.signal.aborted) {
-            if (isMint) { $("#mint-stream-status").textContent = describeError(error); $("#mint-stream-status").classList.add("is-error"); }
+            if (inDialog) { $("#legacy-stream-status").textContent = describeError(error); $("#legacy-stream-status").classList.add("is-error"); }
             else showError(describeError(error));
         }
     } finally {
         state.sourceBusy = false;
         streamController = null;
-        $("#mint-ack").disabled = false;
-        $("#mint-stream").disabled = !$("#mint-ack").checked;
+        $("#legacy-ack").disabled = false;
+        $("#legacy-stream").disabled = !$("#legacy-ack").checked;
         refreshControls();
     }
 }
