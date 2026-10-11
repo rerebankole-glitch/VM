@@ -7,7 +7,10 @@ those files.
 ## Option A — GitHub Actions (recommended)
 
 1. Push the repository to GitHub.
-2. Open **Settings → Pages**.
+2. Open **Settings → Pages**. Only the repository owner can do this step; the workflow's
+   token is not allowed to create the Pages site, so it prints the same instruction in the
+   Actions log (and the `Deploy` job stops with a link to this settings page) until it is
+   done.
 3. Under **Build and deployment → Source**, choose **GitHub Actions**.
 4. Push to `main` (or run the workflow manually from the **Actions** tab →
    *Test and deploy to GitHub Pages* → **Run workflow**).
@@ -80,7 +83,7 @@ built-in *Tiny Linux* image selected. You should see:
 
 | Symptom | Cause and fix |
 | --- | --- |
-| 404 on the Pages URL | Pages is not enabled yet, or the first deployment is still running. Check the **Actions** tab. |
+| 404 on the Pages URL | Pages is not enabled yet, or the first deployment is still running. Check the **Actions** tab; if the `Deploy` job says *Failed to create deployment … Ensure GitHub Pages has been enabled*, flip **Settings → Pages → Source: GitHub Actions** and re-run the run. |
 | Page loads but the screen stays black | `application/wasm` is not being served. On GitHub Pages it is automatic; on your own host add the MIME type. The emulator falls back to `v86-fallback.wasm`, so check that file is deployed too. |
 | `v86.d.ts does not declare …` or other test failures | Run `npm test` locally; the workflow refuses to publish a broken site. |
 | Images missing (`assets/images/*`) | The vendored demo images are large. If you used `git clone --depth 1 --filter=blob:none` or `.gitattributes` LFS rules, fetch them again or run `npm run vendor:images`. |
