@@ -46,6 +46,8 @@ const defaults = () => ({
 const state = {
     /** @type {string} */
     selectedId: "tiny-linux",
+    /** Which sidebar step is showing: "os" | "disk" | "machine". */
+    tab: "os",
     /** @type {import("./sources.js").DiskSource|null} */
     source: null,
     sourceTab: "builtin",
@@ -83,6 +85,7 @@ function init() {
     buildBlockedList();
     buildDiskPanel();
     buildMachinePanel();
+    bindStepTabs();
     bindScreenInteractions();
     bindToolbar();
     bindKeyboardShortcuts();
@@ -95,6 +98,38 @@ function init() {
     log("Ready. Pick an operating system, then press Start.", "ok");
     log(`Emulator: v86 (BSD-2-Clause). Guest images stay on your machine — nothing is uploaded.`);
     updateFooterInfo();
+}
+
+/* ------------------------------------------------------------------ *
+ * Sidebar steps (1 System → 2 Disk image → 3 Hardware)
+ * ------------------------------------------------------------------ */
+
+const STEP_NAMES = { os: "System", disk: "Disk image", machine: "Hardware" };
+
+/** Show one sidebar step and mark its button as the active tab. */
+function setTab(name, { silent = false } = {}) {
+    state.tab = name;
+    $$("[data-tab]").forEach((button) => {
+        const active = button.dataset.tab === name;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    $$("[data-panel]").forEach((panel) => {
+        panel.classList.toggle("is-active", panel.dataset.panel === name);
+    });
+    if (!silent) {
+        const step = Object.keys(STEP_NAMES).indexOf(name) + 1;
+        log(`Step ${step}: ${STEP_NAMES[name]}.`);
+    }
+}
+
+function bindStepTabs() {
+    $$("[data-tab]").forEach((button) => {
+        button.addEventListener("click", () => setTab(button.dataset.tab));
+    });
+    $("#os-next").addEventListener("click", () => setTab("disk"));
+    // The markup starts on step 1; this keeps state.tab in sync without a log line.
+    setTab(state.tab, { silent: true });
 }
 
 /* ------------------------------------------------------------------ *
@@ -189,19 +224,56 @@ function renderSelection() {
     if (entry.links?.length) {
         links.innerHTML = `
             <p class="hint">Get the ISO (opens in a new tab; then open it with “From disk”):</p>
-            <div class="link-row">
-                ${entry.links.map((link) => `
-                    <a class="link ${link.kind === "direct" ? "link-primary" : ""}"
-                       href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">
-                        ${escapeHtml(link.label)}
-                    </a>`).join("")}
-            </div>`;
+            ${linkRowHtml(entry)}`;
         links.hidden = false;
     } else {
         links.hidden = true;
     }
 
+    renderDownloadBox(entry);
     updateStartHint();
+}
+
+/** The download links for one catalogue entry, as markup. */
+function linkRowHtml(entry) {
+    return `
+        <div class="link-row">
+            ${entry.links.map((link) => `
+                <a class="link ${link.kind === "direct" ? "link-primary" : ""}"
+                   href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">
+                    ${escapeHtml(link.label)}
+                </a>`).join("")}
+        </div>`;
+}
+
+/**
+ * Step 1 shows where to get the ISO for the selected system. Bundled images
+ * need no download, and it says so instead of leaving the user hunting for a
+ * link that does not exist.
+ */
+function renderDownloadBox(entry) {
+    const box = $("#os-download");
+    if (entry.bundled) {
+        box.className = "os-download is-ready";
+        box.innerHTML = `
+            <p class="os-download-title"><strong>${escapeHtml(entry.name)}</strong> ships with this page — nothing to download.</p>
+            <p class="hint">Its image is already selected in step 2. Press <strong>Boot</strong> whenever you like.</p>`;
+    } else if (entry.links?.length) {
+        box.className = "os-download is-download";
+        box.innerHTML = `
+            <p class="os-download-title">Download the ISO for <strong>${escapeHtml(entry.name)} ${escapeHtml(entry.version)}</strong></p>
+            ${linkRowHtml(entry)}
+            <p class="hint">
+                Save the file anywhere on this computer, then attach it in step 2
+                (<em>From disk</em>). Your browser reads it locally — nothing is uploaded.
+            </p>`;
+    } else {
+        box.className = "os-download";
+        box.innerHTML = `
+            <p class="os-download-title">No download link recorded for <strong>${escapeHtml(entry.name)}</strong> yet.</p>
+            <p class="hint">See “Which distros work” in the footer for where to get a 32-bit image.</p>`;
+    }
+    box.hidden = false;
 }
 
 /* ------------------------------------------------------------------ *
@@ -692,10 +764,14 @@ function updateStartHint() {
     const ready = Boolean(state.source) && !state.busy;
     button.disabled = !ready;
     $("#start-hint").textContent = !state.source
-        ? "Choose a disk image first"
+        ? "Step 2: choose a disk image"
         : state.busy
             ? "Working…"
             : `Boot ${entry ? `${entry.name} ${entry.version}` : "the virtual machine"}`;
+
+    // Point at step 2 while there is still nothing to boot from.
+    const diskTab = /** @type {HTMLElement|null} */ (document.querySelector('[data-tab="disk"]'));
+    diskTab?.classList.toggle("is-todo", !state.source);
 }
 
 function relayUrlFor(backendId, customUrl) {

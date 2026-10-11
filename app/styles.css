@@ -156,6 +156,13 @@ kbd {
 .tabpanel.is-active { display: block; }
 .panel-intro { margin: 0 0 12px; color: var(--text-dim); font-size: 0.85rem; }
 
+/* A step that still needs doing gets a dot, so the way to step 2 is obvious. */
+.tab.is-todo::after {
+    content: ""; display: inline-block; width: 6px; height: 6px;
+    margin-left: 6px; border-radius: 50%; background: var(--warn);
+    vertical-align: middle;
+}
+
 /* --------------------------------------------------------- OS selection */
 
 .os-list { display: flex; flex-direction: column; gap: 8px; }
@@ -196,6 +203,22 @@ kbd {
 .link-row { display: flex; flex-direction: column; gap: 5px; margin: 8px 0 12px; }
 .link { font-size: 0.8rem; word-break: break-word; }
 .link-primary { color: var(--ok); }
+
+/* Where to get the ISO — shown on step 1 as well as step 2. */
+.os-download {
+    margin-top: 12px; padding: 11px 12px;
+    background: var(--bg-elevated); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: var(--radius-sm);
+}
+.os-download.is-ready { border-left-color: var(--ok); }
+.os-download-title { margin: 0; font-size: 0.83rem; }
+.os-download .hint { margin: 7px 0 0; }
+.os-download .link-row { margin: 9px 0 0; }
+.os-download .link { display: block; padding: 6px 9px; border-radius: 6px; background: var(--bg-soft); border: 1px solid var(--line-soft); }
+.os-download .link:hover { background: var(--accent-soft); border-color: var(--accent); text-decoration: none; }
+.os-download .link-primary { border-color: rgba(74, 222, 128, 0.35); }
+
+.step-next { width: 100%; margin-top: 12px; }
 
 .segmented { display: flex; gap: 4px; background: var(--bg-elevated); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 3px; margin: 12px 0; }
 .segmented button {
