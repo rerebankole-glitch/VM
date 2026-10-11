@@ -4,7 +4,12 @@ The site is plain static files: `index.html`, `app/`, `assets/`, `docs/` and `.n
 There is nothing to compile, so hosting it is mostly a matter of telling GitHub to publish
 those files.
 
-## Option A — GitHub Actions (recommended)
+The site works with either Pages source. **“Deploy from a branch”** is the simplest
+(GitHub publishes the repository itself; the workflow then just runs the tests), while
+**“GitHub Actions”** lets the workflow publish only the files the site needs, with the test
+suite acting as a gate. Neither needs a build step.
+
+## Option A — GitHub Actions
 
 1. Push the repository to GitHub.
 2. Open **Settings → Pages**. Only the repository owner can do this step; the workflow's
@@ -16,6 +21,9 @@ those files.
    *Test and deploy to GitHub Pages* → **Run workflow**).
 5. The run finishes with a green tick, and the deployment URL appears in the job summary
    and in **Settings → Pages**: `https://<user>.github.io/<repo>/`.
+
+In this mode the workflow also checks how Pages is configured on every run and tells you which
+mode is active, so nothing fails silently.
 
 What the workflow does:
 
