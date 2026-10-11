@@ -10,6 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { CATALOG } from "../app/catalog.js";
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => fs.readFileSync(path.join(ROOT, file), "utf8");
 
@@ -51,6 +53,28 @@ test("every data-attribute the app toggles exists in the page", () => {
     for (const tab of ["builtin", "file", "url"]) {
         assert.ok(html.includes(`data-sourcetab="${tab}"`), `missing source tab ${tab}`);
         assert.ok(html.includes(`data-sourcepanel="${tab}"`), `missing source panel ${tab}`);
+    }
+});
+
+test("the sidebar steps actually switch panels", () => {
+    // Regression: the step buttons used to be decorative, which hid the disk
+    // panel (and with it every download link) behind an unreachable tab.
+    assert.match(appJs, /\[data-tab\]/, "nothing binds the step buttons");
+    assert.match(appJs, /\[data-panel\]/, "nothing shows the step panels");
+    for (const step of ["os", "disk", "machine"]) {
+        assert.ok(html.includes(`data-tab="${step}"`), `no step button for ${step}`);
+        assert.ok(html.includes(`data-panel="${step}"`), `no panel for ${step}`);
+    }
+    assert.match(appJs, /classList\.toggle\("is-active", active\)/, "the active step is never highlighted");
+});
+
+test("download links are reachable from step 1, not hidden in step 2", () => {
+    assert.ok(html.includes('id="os-download"'), "step 1 has nowhere to show the download links");
+    assert.match(appJs, /renderDownloadBox\(entry\)/, "the download box is never filled in");
+    assert.match(appJs, /#os-next/, "step 1 has no way to reach the disk panel");
+    // Every non-bundled entry must have something to offer the user.
+    for (const entry of CATALOG.filter((item) => item.status !== "instant")) {
+        assert.ok(entry.links?.length, `${entry.id} would render a download box with no links`);
     }
 });
 
