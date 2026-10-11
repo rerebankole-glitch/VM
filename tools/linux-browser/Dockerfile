@@ -12,7 +12,7 @@ RUN chmod +x /root/.xinitrc \
     && sed -i 's/getty 38400 tty1/agetty --autologin root tty1 linux/' /etc/inittab \
     && echo 'ttyS0::respawn:/sbin/agetty --autologin root -s ttyS0 115200 vt100' >> /etc/inittab \
     && echo 'webvm' > /etc/hostname \
-    && for service in devfs dmesg mdev hwdrivers; do rc-update add "$service" sysinit; done \
+    && for service in devfs dmesg udev udev-trigger udev-settle hwdrivers; do rc-update add "$service" sysinit; done \
     && for service in hwclock modules sysctl hostname syslog bootmisc; do rc-update add "$service" boot; done \
     && rc-update add killprocs shutdown \
     && mkinitfs -F 'base virtio 9p' "$(cat /usr/share/kernel/virt/kernel.release)" \
