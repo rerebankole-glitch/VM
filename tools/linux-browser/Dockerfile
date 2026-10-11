@@ -27,4 +27,4 @@ RUN chmod +x /root/.xinitrc \
 # or the browser. This is a demo image, not a general-purpose APK installation.
 RUN rm -rf /usr/lib/dri /usr/lib/libLLVM* /usr/lib/xorg/modules/extensions/libglx.so \
     /usr/lib/xorg/modules/libglamoregl.so /usr/share/doc /usr/share/man /var/cache/apk/* \
-    && ldd /usr/bin/Xorg && ldd /usr/bin/dillo
+    && ldd /usr/libexec/Xorg && ldd /usr/bin/dillo

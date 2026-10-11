@@ -58,6 +58,6 @@ jobs:
               run: |
                   git config user.name 'github-actions[bot]'
                   git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-                  git add assets/images/alpine-browser
+                  git add assets/images/alpine-browser app/catalog.js
                   git commit -m "Vendor demand-loaded Alpine Linux and Dillo desktop"
                   git push origin arena/ad819641-vm
