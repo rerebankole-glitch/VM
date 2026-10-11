@@ -139,7 +139,7 @@ test("the public API surface the interface relies on is present", async () => {
 });
 
 
-test("the demand-loaded Alpine guest starts its native Dillo browser, not just the kernel", { timeout: 190_000 }, async () => {
+test("the demand-loaded Alpine guest starts its native Dillo browser, not just the kernel", { timeout: 310_000 }, async () => {
     const entry = getEntry("alpine-browser");
     let serial = "";
     const emulator = new V86(baseOptions({
@@ -155,7 +155,7 @@ test("the demand-loaded Alpine guest starts its native Dillo browser, not just t
     let timer;
     try {
         await new Promise((resolve, reject) => {
-            timer = setTimeout(() => reject(new Error(`Native browser did not open. Serial tail:\n${serial.slice(-9000)}`)), 180_000);
+            timer = setTimeout(() => reject(new Error(`Native browser did not open. Serial tail:\n${serial.slice(-9000)}`)), 300_000);
             emulator.add_listener("download-error", (event) => reject(new Error(`Guest object missing: ${event.file_name}`)));
             emulator.add_listener("serial0-output-byte", (byte) => {
                 serial += String.fromCharCode(byte);

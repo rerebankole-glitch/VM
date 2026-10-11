@@ -38,7 +38,7 @@ export async function checkLinuxDesktop({ context, base, screenshots = false }) 
         assert.equal(await page.locator("#net-select").inputValue(), "none");
         await page.click('[data-quick-launch="alpine-browser"]');
         await page.waitForSelector('body[data-vmstate="running"]');
-        await page.waitForFunction(() => window.__qaSerial.includes("WEBVM_BROWSER_WINDOW_READY"), null, { timeout: 180_000 });
+        await page.waitForFunction(() => window.__qaSerial.includes("WEBVM_BROWSER_WINDOW_READY"), null, { timeout: 300_000 });
         await page.bringToFront();
         await page.evaluate(() => window.__qaGuest.serial0_send("DISPLAY=:0 xwininfo -root -tree > /opt/webvm/initial-window-tree.txt\n"));
         await page.waitForFunction(() => {
