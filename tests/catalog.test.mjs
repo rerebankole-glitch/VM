@@ -44,9 +44,14 @@ test("instant entries ship an image that really exists on disk", () => {
         assert.ok(entry.bundled?.path, `${entry.id} has no bundled path`);
         const file = path.join(ROOT, entry.bundled.path);
         assert.ok(fs.existsSync(file), `missing ${entry.bundled.path}`);
-        assert.equal(fs.statSync(file).size, entry.sizeBytes, `${entry.id}: recorded size does not match the file`);
+        if (entry.filesystem) {
+            const manifest = JSON.parse(fs.readFileSync(path.join(path.dirname(file), "manifest.json"), "utf8"));
+            assert.equal(manifest.compressedBytes, entry.sizeBytes, "catalogue size should describe the compressed Linux payload");
+        } else {
+            assert.equal(fs.statSync(file).size, entry.sizeBytes, `${entry.id}: recorded size does not match the file`);
+        }
         assert.equal(entry.bundled.fileName, entry.bundled.path.split("/").pop());
-        assert.ok(["cdrom", "fda", "hda"].includes(entry.device), `${entry.id} has an unsupported device`);
+        assert.ok(["cdrom", "fda", "hda", "filesystem"].includes(entry.device), `${entry.id} has an unsupported device`);
     }
 });
 
@@ -97,4 +102,19 @@ test("catalogue lookups and grouping behave", () => {
     const groups = groupedCatalog();
     assert.equal(groups.instant.length + groups.bootable.length, CATALOG.length);
     assert.ok(groups.bootable.every((entry) => entry.status !== "instant"));
+});
+
+
+test("the featured Linux really has a graphical browser and the full-browser candidate stays honest", () => {
+    const builtIn = getEntry("alpine-browser");
+    assert.equal(builtIn.family, "Linux");
+    assert.equal(builtIn.browser, "Dillo");
+    assert.ok(builtIn.filesystem);
+    assert.ok(builtIn.notes.some((note) => /not JavaScript/.test(note)));
+    assert.ok(builtIn.notes.some((note) => /Internet is off/.test(note)));
+    const full = getEntry("antix-26.1-386");
+    assert.equal(full.browser, "Firefox ESR");
+    assert.equal(full.status, "tricky");
+    assert.match(full.summary, /not boot-verified/);
+    assert.ok(full.links.some((link) => /antix-26-1-released/.test(link.url)));
 });

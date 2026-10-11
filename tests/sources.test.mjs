@@ -163,3 +163,125 @@ test("probe reports transport problems and refuses nonsense URLs", async () => {
 test("a missing disk image is rejected instead of booting nothing", async () => {
     await assert.rejects(() => resolveImage({ kind: "file", label: "none", sizeBytes: 0, device: "cdrom" }), /No disk image/);
 });
+
+test("streaming-only refuses no-range hosts before issuing a whole-file fetch", async () => {
+    await withServer(async (base) => {
+        await assert.rejects(() => resolveImage({
+            kind: "url", url: `${base}/norange`, sizeBytes: PAYLOAD.length, acceptRanges: false, streamOnly: true,
+        }), /Streaming-only/);
+    });
+});
+
+test("streaming-only takes precedence over a previous local-file RAM preference", async () => {
+    const source = { kind: "url", url: "https://example.org/image.iso", sizeBytes: 2_000_000_000, acceptRanges: true };
+    const result = await resolveImage(source, { mode: "ram", streamOnly: true });
+    assert.deepEqual(result.image, { url: source.url, size: source.sizeBytes, async: true });
+});
+
+test("large non-streaming URLs are refused even when the streaming-only option is off", async () => {
+    await assert.rejects(() => resolveImage({
+        kind: "url", url: "https://example.org/huge.iso", sizeBytes: RAM_LIMIT_BYTES + 1, acceptRanges: false,
+    }), /too large/);
+});
+
+async function withFetch(mock, run) {
+    const original = globalThis.fetch;
+    globalThis.fetch = mock;
+    try { await run(); } finally { globalThis.fetch = original; }
+}
+
+test("an Accept-Ranges header on a full 200 response is not proof of streaming", async () => {
+    let cancelled = false;
+    await withFetch(async () => new Response(new ReadableStream({ cancel() { cancelled = true; } }), {
+        headers: { "Accept-Ranges": "bytes", "Content-Length": "2000000000", "Content-Type": "application/octet-stream" },
+    }), async () => {
+        const probe = await probeUrl("https://example.org/lying.iso");
+        assert.equal(probe.ok, true);
+        assert.equal(probe.acceptRanges, false);
+        assert.equal(probe.size, 2_000_000_000);
+        assert.equal(cancelled, true, "the full body must be cancelled, not consumed");
+    });
+});
+
+for (const [label, body, headers] of [
+    ["missing/excluded Content-Range", "ab", { "Content-Length": "2" }],
+    ["wrong offset", "ab", { "Content-Range": "bytes 1-2/100" }],
+    ["wrong declared length", "abc", { "Content-Range": "bytes 0-1/100", "Content-Length": "3" }],
+    ["lying chunked body", "abc", { "Content-Range": "bytes 0-1/100" }],
+    ["short chunked body", "a", { "Content-Range": "bytes 0-1/100" }],
+    ["encoded bytes", "ab", { "Content-Range": "bytes 0-1/100", "Content-Encoding": "gzip" }],
+]) {
+    test(`an invalid 206 (${label}) never becomes a streaming source`, async () => {
+        await withFetch(async () => new Response(body, { status: 206, headers: { "Content-Type": "application/octet-stream", ...headers } }), async () => {
+            const probe = await probeUrl("https://example.org/image.iso");
+            assert.equal(probe.acceptRanges, false);
+            assert.equal(probe.size, undefined, "partial Content-Length is not an ISO's full size");
+        });
+    });
+}
+
+test("HTML landing pages and credential-bearing image URLs are refused", async () => {
+    await withFetch(async () => new Response("<h1>Download</h1>", { headers: { "Content-Type": "text/html" } }), async () => {
+        const page = await probeUrl("https://example.org/download");
+        assert.equal(page.ok, false);
+        assert.match(page.error, /web page/);
+        const credentials = await probeUrl("https://private:password@example.org/image.iso");
+        assert.equal(credentials.ok, false);
+        assert.match(credentials.error, /credentials/);
+    });
+});
+
+test("a successful HEAD after a failed ranged GET does not prove ranges", async () => {
+    await withFetch(async (url, options) => {
+        if (options.method !== "HEAD") throw new Error("blocked ranged GET");
+        return new Response(null, { headers: { "Accept-Ranges": "bytes", "Content-Length": "2000000000" } });
+    }, async () => {
+        const probe = await probeUrl("https://example.org/image.iso");
+        assert.equal(probe.ok, true);
+        assert.equal(probe.acceptRanges, false);
+        assert.equal(probe.size, 2_000_000_000);
+    });
+});
+
+test("link probing handles timeout and user cancellation without another request", async () => {
+    let calls = 0;
+    await withFetch((url, { signal }) => new Promise((resolve, reject) => {
+        calls++;
+        if (signal.aborted) return reject(new Error("aborted"));
+        signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    }), async () => {
+        const timeout = await probeUrl("https://example.org/stall.iso", { timeoutMs: 10 });
+        assert.equal(timeout.ok, false);
+        assert.match(timeout.error, /too long/);
+        assert.equal(calls, 1);
+        const controller = new AbortController();
+        controller.abort();
+        const cancelled = await probeUrl("https://example.org/stall.iso", { signal: controller.signal });
+        assert.match(cancelled.error, /cancelled/);
+        assert.equal(calls, 2);
+    });
+});
+
+test("full RAM downloads enforce a limit on declared AND undeclared sizes", async () => {
+    const { fetchToArrayBuffer } = await import("../app/sources.js");
+    await withFetch(async () => new Response("abc", { headers: { "Content-Length": "3" } }), async () => {
+        await assert.rejects(() => fetchToArrayBuffer("https://example.org/image.iso", null, { maxBytes: 2 }), /too large/);
+    });
+    await withFetch(async () => new Response("abc"), async () => {
+        await assert.rejects(() => fetchToArrayBuffer("https://example.org/image.iso", null, { maxBytes: 2 }), /too large/);
+    });
+});
+
+
+test("the built-in Linux browser is demand-loaded without a whole-image fetch", async () => {
+    const source = bundledSource(getEntry("alpine-browser"));
+    assert.equal(source.kind, "filesystem");
+    await withFetch(() => { throw new Error("must not fetch an ISO"); }, async () => {
+        const resolved = await resolveImage(source, { mode: "ram", streamOnly: true });
+        assert.equal(resolved.image, undefined);
+        assert.deepEqual(resolved.filesystem.basefs, { url: "assets/images/alpine-browser/fs.json" });
+        assert.equal(resolved.filesystem.baseurl, "assets/images/alpine-browser/rootfs/");
+        assert.match(resolved.cmdline, /root=host9p/);
+        assert.match(resolved.strategy, /on demand/);
+    });
+});

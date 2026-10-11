@@ -1,3 +1,19 @@
+# Linux distributions and browsers
+
+The **Linux kernel** alone contains no desktop or browser. For the small, single-core
+32-bit emulator used by this Pages site, the built-in **Alpine Linux 3.23 + Fluxbox +
+Dillo** profile is the lightweight graphical choice. It loads filesystem files on demand,
+opens a local browser page and needs no saved ISO. Dillo does not support JavaScript;
+internet requires an optional relay, and guest changes are temporary.
+
+For a full browser, **antiX 26.1 386 full** includes Firefox ESR according to its official
+[release announcement](https://antixlinux.com/antix-26-1-released/), but is a heavy,
+unbundled, **not boot-verified** candidate here. It is not a one-click hosted Firefox VM.
+Use a current supported 64-bit remote desktop for modern web apps and sensitive accounts.
+Details, security limits and exact source/provenance: [LINUX-BROWSER.md](LINUX-BROWSER.md).
+
+---
+
 # Which distributions work, and why
 
 ## The one rule
@@ -22,13 +38,20 @@ publishing 32-bit images. The newest releases that still exist in 32-bit are:
 | Tiny Core Linux | still ships `x86` | 17 MB Core image, ideal for emulation |
 | Arch Linux 32 | rolling, maintained | community i686 port |
 
-Everything in the table above is selectable from the interface, with download links, and the
-catalogue lives in `app/catalog.js` if you want to add your own.
+Catalogue entries are 32-bit compatibility candidates, not a guarantee that every live
+ISO will boot successfully. Mint 19.3 is unsupported and should only be used for experiments.
+The catalogue lives in `app/catalog.js`.
+
+For a low-storage device, use **Stream URL** / **Explore Mint** rather than downloading a
+large ISO. Streaming-only refuses hosts that cannot prove ranges. For current Mint and
+persistent server-side files, see [REMOTE-MINT.md](REMOTE-MINT.md).
 
 ## What to expect, by system
 
 ### Built-in images (nothing to download)
 
+* **Alpine Linux + Dillo** — a real Fluxbox desktop, native graphical browser and
+  terminal. Files load on demand; no ISO needed. No JavaScript or implicit internet.
 * **Tiny Linux** — a Buildroot image that boots to a root shell in a few seconds. Use it to
   confirm keyboard/mouse capture, networking and settings before downloading gigabytes.
 * **KolibriOS** — a complete graphical OS in 1.44 MB. Boots in seconds, has windows, a text
@@ -71,7 +94,7 @@ Practical advice:
   disk; `apk add` works if you enable a network backend.
 * **Arch Linux 32** boots the standard Arch ISO; use `archinstall` for a guided install.
 
-## Installing a guest onto a persistent disk
+## Keeping an installation with a downloaded disk image
 
 The interface has an optional hard disk under **Hardware → Hard disk**:
 
@@ -81,8 +104,11 @@ The interface has an optional hard disk under **Hardware → Hard disk**:
 4. Next session: **Hard disk → Use a disk image file**, pick `vm-disk.img`, set **Boot order**
    to *Hard disk → CD-ROM → floppy*, and boot.
 
-The disk is held in RAM while the machine runs, so a 2 GB installation needs roughly 2 GB of
-free memory plus the guest's RAM. 512 MB–1 GB disks are the comfortable range.
+This is not automatic persistence: the disk is in RAM until you download it. A 2 GB disk
+needs roughly 2 GB of free memory plus the guest's RAM, and storing the downloaded disk
+uses local space. These small disks are not large enough for a normal full Mint installation.
+A permanent modern Mint installation belongs on a separate server-side virtual disk;
+see [REMOTE-MINT.md](REMOTE-MINT.md).
 
 ## Guest networking
 
@@ -107,8 +133,8 @@ in the built-in Tiny Linux image run `ip link set eth0 up` and `udhcpc -i eth0`.
 | `Kernel panic – not syncing: VFS: Unable to mount root fs` | The live filesystem could not be found; the ISO is probably corrupt or partially downloaded. Verify its checksum. |
 | Desktop never appears, CPU counter still rising | Very slow, still working. Wait longer, or switch to a lighter flavour. |
 | Guest freezes after the desktop appears | Increase memory, or lower the screen resolution inside the guest (1024×768 instead of 1280×1024). |
-| Keyboard does nothing | Hover the mouse **over the screen area** — input is only captured there. |
-| Mouse jumps wildly | Click the screen to lock the pointer (relative mouse), press <kbd>Esc</kbd> to release. |
+| Keyboard does nothing | **Click/focus the display**, then type. Host controls, window blur and Ctrl+Alt+G release input. Hover alone does not capture keys. |
+| Mouse jumps wildly | Use **Grab mouse** for relative input, or avoid lock for an absolute guest pointer. <kbd>Esc</kbd> releases lock. |
 
 ## Adding your own operating system
 

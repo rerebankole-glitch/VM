@@ -1,4 +1,6 @@
 #!/bin/sh
+# Dillo's local file helper uses TCP loopback even when guest internet is off.
+ip link set lo up
 # Networking is optional and must never delay the local desktop.
 if ip link show eth0 >/dev/null 2>&1; then
     ip link set eth0 up

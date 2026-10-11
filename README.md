@@ -1,11 +1,18 @@
-# Browser VM
+# WebVM — your browser computer
 
-A complete x86 PC that boots **MX Linux, Lubuntu, Linux Mint, Debian, antiX, Tiny Core,
-FreeDOS and KolibriOS** inside a browser tab — no plugins, no backend, no uploads.
+A real 32-bit x86 PC inside a browser tab, with **one-click desktop launch**, a clean
+**desktop mode**, focused keyboard/mouse controls, and **streaming-only image loading**
+for computers without room to save a big ISO. No painted-on fake desktop: the apps run
+inside genuine guest operating systems, using [v86](https://github.com/copy/v86).
 
-It is a static site: HTML, CSS, ~360 KB of JavaScript and a WebAssembly CPU emulator
-([v86](https://github.com/copy/v86)). Drop it on GitHub Pages (or any static host) and
-visitors get a working virtual machine. Your ISO files never leave the visitor's device.
+The app remains a static site with no runtime dependencies or build step. Drop it on
+GitHub Pages (or any static host). Local files are never uploaded. The optional Node host
+also supplies a **diskless, named-image Mint relay** for mirrors that lack CORS.
+
+**Important:** current Linux Mint is 64-bit and cannot run in v86. Legacy Mint 19.3 Xfce
+is a slow, unsupported candidate, not a guaranteed boot or a daily-use computer. If you
+want current Mint with permanent files and no OS installation on your device, use a
+**persistent remote 64-bit VM**. See [the storage and remote Mint guide](docs/REMOTE-MINT.md).
 
 ```
 ┌─────────────────────────── browser tab ───────────────────────────┐
@@ -25,26 +32,36 @@ cd VM
 npm start          # serves http://localhost:8080 — or: python3 -m http.server 8080
 ```
 
-Open the URL, pick a system, press **Boot**. The three built-in images (Tiny Linux,
-KolibriOS, FreeDOS) are already in the repository, so the first boot needs no download.
+Open the URL and click **Linux + browser**: Alpine Linux boots a real Fluxbox desktop
+with **Dillo already installed**, opening a local welcome page. Linux loads compressed
+filesystem files on demand from this site — about 72 MiB in total, no large ISO to
+save. Allow a few minutes for a cold Linux browser boot. **Instant desktop**
+launches KolibriOS; **Linux terminal** launches the small console Linux. You can also
+pick a system and press **Boot**.
+
+Dillo supports basic pages and HTTPS, **not JavaScript-heavy sites**. Guest internet
+requires an explicitly selected external relay; the local welcome page works offline.
+Guest changes are temporary, and browser-session saving is not supported for the new
+filesystem profile yet. See [the Linux browser guide](docs/LINUX-BROWSER.md).
+
+**Explore Mint** checks streaming sources after explaining the legacy/security limits.
+With `npm start`, it first tries the Node host's byte-range relay, then direct mirrors.
+The host must be able to reach a suitable image server. With GitHub Pages, there is no
+relay backend. If streaming is unavailable the app stops, without a whole-ISO download.
+Configure an alternate trusted legacy image with `MINT_ISO_URL` or `--mint-url`;
+see [docs/REMOTE-MINT.md](docs/REMOTE-MINT.md).
 
 ### On GitHub Pages
 
-The repository is already wired for Pages, but GitHub only lets the **repository owner**
-switch it on the first time:
+Live site: **https://rerebankole-glitch.github.io/VM/**.
 
-1. Push/merge to `main`.
-2. Open **Settings → Pages → Build and deployment**, and set **Source: “GitHub Actions”**
-   (one click — the workflow cannot do this for you, and it prints exactly this instruction
-   in the Actions log until it is done).
-3. Re-run the workflow from the **Actions** tab (**Re-run all jobs**), or push another commit.
-   The test suite runs, then the site is published to `https://<user>.github.io/<repo>/`.
+This repository already uses **Deploy from a branch → main → / (root)**. Merging the
+working branch into `main` triggers GitHub's Pages publication. The test workflow runs
+on the pull request and main push. There is no runtime build step or backend on Pages.
 
-No build step, no secrets, no configuration file to edit. Prefer the old-fashioned way?
-Pages can also serve the repository straight from the `main` branch root
-(**Source: Deploy from a branch**, folder `/ (root)`) — the site is plain static files, and
-GitHub's Actions workflow simply stays unused. Details and troubleshooting:
-**[docs/DEPLOY.md](docs/DEPLOY.md)**.
+For another repository, enable that branch source in **Settings → Pages**, or choose
+**GitHub Actions** to let the included workflow assemble only the site files and gate
+publication on tests. Details: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 While you wait for Pages, the same site runs anywhere: `npm start` serves it locally, and
 any static host (Cloudflare Pages, Netlify, a plain nginx) can serve the repository as-is.
@@ -58,13 +75,14 @@ distros dropped 32-bit builds.**
 
 | System | Release to use | Size | How it feels |
 | --- | --- | --- | --- |
+| **Alpine + Dillo** (built in) | Alpine 3.23 x86 / Fluxbox | ≈72 MiB on demand | Real Linux desktop and graphical browser; no JavaScript; 256 MB guest RAM |
 | **Tiny Linux** (built in) | Buildroot test image | 5 MB | Boots to a root shell in seconds |
 | **KolibriOS** (built in) | 0.7.7.0 | 1.4 MB | Full GUI desktop, boots in seconds |
 | **FreeDOS** (built in) | 7.22 | 720 KB | Instant DOS prompt |
 | **MX Linux** | `MX-19.4_386.iso` | 1.7 GB | Real Xfce desktop, slow boot |
 | **Lubuntu** | `lubuntu-18.04.5-desktop-i386.iso` | 1.1 GB | Lightest of the Ubuntu family |
-| **Linux Mint** | `linuxmint-19.3-xfce-32bit.iso` | 1.8 GB | Xfce edition only, slow but works |
-| **antiX** | `antiX-23.2_386-full.iso` | 1.7 GB | sysVinit, noticeably snappier |
+| **Linux Mint** | `linuxmint-19.3-xfce-32bit.iso` | 1.8 GB | Unsupported legacy Xfce; slow experimental candidate, boot not guaranteed |
+| **antiX** | `antiX-26.1_386-full.iso` | ≈2.3 GB | Firefox ESR included in full; experimental, not boot-verified here |
 | **Debian** | 12 “bookworm” live i386 | 2.9 GB | Full Debian, security supported |
 | **Tiny Core Linux** | `TinyCore-current.iso` | 17 MB | Tiny and fast |
 | **Alpine Linux** | `latest-stable` x86 | 250 MB | Console-first, ideal for scripting |
@@ -79,35 +97,63 @@ instruction. The interface says so up front, and
 
 | Step | What to do |
 | --- | --- |
-| 1. System | Pick a card. Built-in systems are ready immediately; distro cards show download links for the right 32-bit ISO. |
-| 2. Disk image | **Built in** (nothing to fetch), **From disk** (pick or drop an `.iso`/`.img` — recommended, it is the fastest path), or **From URL** (works only where the host sends CORS + Range headers). |
+| 1. System | Start **Linux + browser**, the instant KolibriOS desktop, a Linux terminal, or another 32-bit guest. Browser limits and experimental-image warnings are explicit. |
+| 2. Disk image | **Built in** (small site assets), **Stream URL** (no ISO file to save; verified byte ranges + CORS needed), or **From disk** (pick/drop a file you already have). Streaming-only is on by default. |
 | 3. Hardware | Memory, video memory, boot order, network backend. “Use recommended settings” restores the values tuned for the selected system. |
 
 While it runs:
 
-* **Hover the screen to type.** Keyboard input is only captured over the screen area, so
-  the rest of the page stays usable.
-* **Click the screen to grab the mouse**, <kbd>Esc</kbd> releases it. Guests with an
-  absolute pointing device (Xfce, LXDE) work without grabbing.
-* **Fullscreen** scales the emulated screen to the window; **Fit**/`−`/`+` control the zoom.
-* **Screenshot** saves a PNG, **Ctrl+Alt+Del** reaches the guest's login manager.
-* **Save state / Load state** download and restore a compressed snapshot of the whole
-  machine (CPU, RAM, screen, disks) — handy to skip a 20-minute boot next time.
-* **Type text** sends a string to the guest as keystrokes (great for long commands).
+* **Click the screen to control it.** Input remains connected until you focus a page
+  control, switch tabs/windows, or press **Ctrl+Alt+G**. Merely hovering never captures
+  your keyboard. Modifier keys are released when focus is lost.
+* **Grab mouse** enables pointer lock for relative mice and games; **Esc** releases it.
+  Pointer lock is explicit, not forced on every click. Absolute guest pointers can work
+  without it.
+* **Desktop mode** removes setup/log/metrics clutter and uses the window's height;
+  **Show setup** brings it back. **Fullscreen** keeps the toolbar visible. The focused
+  guest's **Ctrl+Alt+F** shortcut toggles fullscreen; browsers/host OSes still reserve
+  some shortcuts.
+* **Screenshot**, **Ctrl+Alt+Del**, zoom and other actions are in the compact toolbar
+  and **Tools** menu. Pausing visibly labels the paused screen.
+* **Paste from clipboard** opens a review box; it does not execute clipboard commands
+  automatically. **Type text** accepts multiple lines; **Ctrl+Enter** sends them as
+  guest keystrokes, paced to avoid dropped keys. This path supports up to 5,000 US-ASCII
+  characters per send (tabs expand to spaces), not a shared guest clipboard. Clipboard
+  denial falls back to manual paste.
+* **Save session here** is an **optional local** snapshot, never an autosave or cloud
+  backup. It requires confirmation, uses at most 128 MB, and checks browser quota.
+  Resume/delete it on the welcome screen. This path supports built-in/streamed disk-image
+  guests without an extra hard disk; the new demand-loaded filesystem is excluded until
+  restore is verified. Local ISO files and installations use file snapshots.
+* **Download state / Load state file** export/restore the machine with the same emulator,
+  memory and images. Saving/restoring pauses the CPU and resumes it only if it was running.
+* Restart/power-off/closing a live guest warn about unsaved work. Setup controls are
+  locked while attached, so changes cannot silently mismatch a running snapshot.
 
-### Getting the ISOs
+### No space for an ISO?
 
-Download links for every supported release are in the interface (step 2) and in
-[docs/DISTROS.md](docs/DISTROS.md). Then choose **From disk** and pick the file. This is
-the recommended route: it bypasses CORS entirely, and for images above 512 MB v86 streams
-blocks off your disk instead of loading gigabytes into RAM.
+The featured **Linux + browser** desktop needs no ISO at all: its filesystem files load
+on demand. For other distributions, prefer **Stream URL**, with **Streaming only** left checked. A 2-byte probe verifies
+real Range support and an exposed image size. A misleading `Accept-Ranges` header is
+not enough. Hosts that ignore ranges are refused, not silently downloaded. Turning
+streaming-only off explicitly allows small RAM downloads, bounded at 512 MB even if the
+server omits `Content-Length`.
+
+For a mirror without CORS, the Node host's optional Mint relay transfers only bounded
+ranges and writes no ISO to disk. Static hosts cannot run that relay. Streaming still
+uses your CPU/RAM and may use browser caches; it is not a remote computer.
+
+If you already have an ISO, **From disk** reads it locally, without uploading it. Large
+files are read block-by-block instead of copied into RAM. More details:
+[image hosting](docs/HOSTING-ISOS.md) and [remote Mint](docs/REMOTE-MINT.md).
 
 ## Performance expectations
 
 An emulated CPU is roughly **10–50× slower** than the host. Rough guidance:
 
-* Built-in images, KolibriOS, FreeDOS: **instant**, feels native.
-* Tiny Core, Alpine: **under a minute** to a usable system.
+* KolibriOS, FreeDOS and the small console Linux boot quickly.
+* The Alpine browser desktop needs more time; expect a minute or more on a slow device.
+* Other small Linux images vary with guest services and the host CPU.
 * MX 19.4, antiX, Lubuntu 18.04, Mint 19.3 live desktops: **several minutes to tens of
   minutes** for the first boot; the desktop is usable for exploring, not for work.
 
@@ -119,10 +165,12 @@ log panel shows progress and the CPU counter tells you whether the guest is stil
 ```
 index.html                 the whole application shell
 app/
-  app.js                   interface logic: picker, sources, controls, zoom, input capture
+  app.js                   setup, desktop mode, streaming launch, controls, sessions
+  input.js                 explicit display focus, input release and host shortcuts
+  sessions.js              opt-in, bounded IndexedDB snapshots and metadata validation
   engine.js                wrapper around one v86 instance (boot/run/pause/reset/state)
   catalog.js               the operating-system catalogue (pure data — edit this to add distros)
-  sources.js               built-in / local file / URL disk images, URL probing, streaming
+  sources.js               on-demand filesystem / disk images, URL probing, streaming
   styles.css               dark responsive theme (+ the markup contract v86 needs)
   util.js                  formatting and storage helpers
 assets/
@@ -131,7 +179,8 @@ assets/
 tools/
   vendor-v86.sh            refresh assets/v86 from a pinned v86 release
   fetch-demo-images.sh     refresh assets/images from copy/images
-  serve.mjs                dependency-free static server with Range support
+  serve.mjs                static + named-image host, Range support, safe file serving
+  image-relay.mjs          optional diskless legacy Mint relay (never an open proxy)
 tests/                     node:test suite — catalogue, assets, interface wiring, real boots
 docs/                      deployment, distro matrix, ISO hosting, architecture
 ```
@@ -147,8 +196,10 @@ same `libv86.js` the browser uses (v86 has a Node mode, so this needs no browser
    starts it. v86's WASM core translates x86 instructions to WebAssembly at runtime.
 3. The screen lives in `#screen_container`: v86 writes text mode into a `<div>` and
    graphical modes into a `<canvas>`; the interface scales that pair to fit the viewport.
-4. Disk images arrive one of three ways: bundled file, a `File` from the user (streamed
-   block-by-block when large), or a URL using HTTP Range requests.
+4. The featured Alpine desktop loads compressed 9p filesystem files on demand. Other
+   disk images arrive as a bundled file, a local `File` read block-by-block when large,
+   or a URL using proven HTTP Range requests. The optional Node relay solves mirror CORS
+   without hosting a VM or saving the full ISO.
 5. Guest networking is optional: `inbrowser` is a built-in virtual LAN, or you can point it
    at a [wsproxy](https://github.com/copy/v86/blob/master/docs/networking.md) relay for real
    internet access.
@@ -158,15 +209,18 @@ More detail, including the reasoning behind the input-capture and zoom strategie
 
 ## Limitations, honestly
 
-* **No 64-bit guests.** No long mode, no multicore, no nested virtualisation.
+* **No 64-bit guests.** No long mode, no multicore, no nested virtualisation. Current
+  Mint requires a different, server-side VM; the UI says this before a streaming attempt.
 * **Live ISOs are heavy.** They are real kernels with real desktops; the emulator is the
   bottleneck, not the page.
 * **Guest network access needs a relay.** Nothing is enabled by default; the public
   `relay.widgetry.org` proxy is shared and slow, and a self-hosted relay is the fast option.
-* **Saving state is memory-hungry.** A snapshot of a 512 MB guest is tens of megabytes of
-  compressed data in the browser tab.
-* **Mobile browsers work but are cramped** — 64 MB RAM and a 32-bit guest is the practical
-  ceiling on phones.
+* **Snapshots use resources.** Save sizes depend on guest state and can be large.
+  Browser sessions are opt-in, capped at 128 MB, and subject to quota/eviction. There is
+  no cloud persistence or automatic ISO cache.
+* **Mobile browsers are cramped and memory-limited.** The console Linux uses 64 MB;
+  the graphical browser profile needs 256 MB plus substantial browser/emulator overhead.
+  It may be unsuitable for low-memory phones.
 
 ## Credits and licences
 
@@ -178,3 +232,13 @@ More detail, including the reasoning behind the input-capture and zoom strategie
   `assets/images/README.md`.
 * Application code in this repository: MIT, see [LICENSE](LICENSE). Third-party components
   and their licences are listed in [NOTICE](NOTICE).
+
+
+### Linux browser image preparation
+
+The already prepared Alpine desktop is a bounded, demand-loaded filesystem, not a giant
+ISO. `tools/linux-browser/` contains the Docker/guest recipes. The separate preparation
+workflow builds in GitHub's cloud runner and publishes exact copyleft source archives
+as release assets, outside Git. APK provenance and all deployed checksums are included.
+Rebuilding is optional and requires a separate Docker build host, not the visitor's PC.
+See [docs/LINUX-BROWSER.md](docs/LINUX-BROWSER.md).

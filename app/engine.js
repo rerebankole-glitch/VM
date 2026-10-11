@@ -30,7 +30,7 @@ export const NIC_TYPES = [
  * onto the real internet.
  */
 export const NET_BACKENDS = [
-    { id: "none", label: "No network card", help: "Simplest and fastest. Nothing leaves the tab." },
+    { id: "none", label: "Guest internet off", help: "No guest internet relay. Built-in system files still load from this site; local guest loopback remains available." },
     {
         id: "inbrowser",
         label: "In-browser network",
@@ -66,11 +66,13 @@ export class VmEngine {
      * @param {(message: string, level?: string) => void} [options.hooks.onLog]
      * @param {(width: number, height: number, bpp: number) => void} [options.hooks.onScreenSize]
      */
-    constructor({ container, hooks = {} }) {
+    constructor({ container, hooks = {}, startupTimeoutMs = 45_000 }) {
         this.container = container;
         this.hooks = hooks;
+        this.startupTimeoutMs = startupTimeoutMs;
         this.state = /** @type {EngineState} */ ("idle");
         this.lastError = null;
+        this.keyboardEnabled = false;
         /** @type {any} */
         this.v86 = null;
         this.config = null;
@@ -150,8 +152,9 @@ export class VmEngine {
             screen_container: this.container,
             bios: BIOS_IMAGE,
             vga_bios: VGA_BIOS_IMAGE,
-            // v86 starts the CPU itself once every ROM and disk image is loaded.
-            autostart: config.autostart !== false,
+            // Keep a cancelled / failed boot from starting an orphan CPU later.
+            // The wrapper starts it explicitly once this instance is still current.
+            autostart: false,
             boot_order: config.bootOrder,
             acpi: Boolean(config.acpi),
             disable_speaker: !config.sound,
@@ -161,8 +164,14 @@ export class VmEngine {
             fastboot: Boolean(config.instantBoot),
         };
 
-        const deviceKey = config.device || "cdrom";
-        options[deviceKey] = config.image;
+        if (config.filesystem) {
+            options.filesystem = config.filesystem;
+            options.bzimage_initrd_from_filesystem = true;
+            options.cmdline = config.cmdline;
+        } else {
+            const deviceKey = config.device || "cdrom";
+            options[deviceKey] = config.image;
+        }
         if (config.hardDisk) {
             options.hda = config.hardDisk;
         }
@@ -184,34 +193,52 @@ export class VmEngine {
             throw error;
         }
 
+        this.setKeyboardEnabled(false);
+        this.setMouseEnabled(false);
         this.#attachEventBridge();
+        const instance = this.v86;
         this.startedAt = performance.now();
-        return this.v86;
+        const deadline = setTimeout(() => {
+            if (this.v86 !== instance || this.state !== "loading") return;
+            this.lastError = new Error("The emulator could not initialize in time. Check the image host or try a built-in system.");
+            this.#setState("error", { message: this.lastError.message });
+            this.#readyResolve?.();
+        }, this.startupTimeoutMs);
+        try {
+            await this.#readyInstance();
+            if (config.autostart !== false) await this.run();
+            return instance;
+        } finally { clearTimeout(deadline); }
     }
 
     #attachEventBridge() {
         const v86 = this.v86;
         if (!v86?.add_listener) return;
+        const on = (event, callback) => v86.add_listener(event, (...args) => {
+            if (this.v86 === v86) callback(...args);
+        });
 
-        v86.add_listener("emulator-ready", () => {
+        on("emulator-ready", () => {
             this.#log("Emulator core ready. ROMs loaded, starting the guest BIOS.", "ok");
+            this.setKeyboardEnabled(false);
+            this.setMouseEnabled(false);
             this.#readyResolve?.();
             if (this.state === "loading") this.#setState("ready");
         });
 
-        v86.add_listener("emulator-loaded", () => {
+        on("emulator-loaded", () => {
             this.#log("All disk images are attached.", "ok");
         });
 
-        v86.add_listener("emulator-started", () => {
+        on("emulator-started", () => {
             this.#setState("running");
         });
 
-        v86.add_listener("emulator-stopped", () => {
+        on("emulator-stopped", () => {
             this.#setState("paused");
         });
 
-        v86.add_listener("download-progress", (event) => {
+        on("download-progress", (event) => {
             this.hooks.onProgress?.({
                 loaded: event.loaded,
                 total: event.total,
@@ -222,16 +249,27 @@ export class VmEngine {
             });
         });
 
-        v86.add_listener("download-error", (event) => {
+        on("download-error", (event) => {
             const name = event.file_name || "disk image";
+            this.lastError = new Error(`Could not load ${name}.`);
             this.#log(`Failed to download ${name}.`, "error");
-            this.#setState("error", { message: `Could not load ${name}.` });
+            this.#setState("error", { message: this.lastError.message });
+            this.#readyResolve?.();
         });
 
-        v86.add_listener("screen-set-size", (size) => {
+        on("screen-set-size", (size) => {
             const [width, height, bpp] = size;
             this.hooks.onScreenSize?.(width, height, bpp);
         });
+    }
+
+    async #readyInstance() {
+        const instance = this.v86;
+        if (!instance) throw new Error("No virtual machine is attached.");
+        await this.readyPromise;
+        if (this.v86 !== instance) throw new Error("The boot was cancelled.");
+        if (this.state === "error") throw this.lastError || new Error("The emulator could not initialize.");
+        return instance;
     }
 
     /** Start / resume execution. */
@@ -239,8 +277,8 @@ export class VmEngine {
         if (!this.v86) throw new Error("Nothing to run yet.");
         // v86 only creates its internal CPU once the ROMs and the WASM core are
         // loaded; calling run() earlier throws inside v86, so wait for it.
-        await this.readyPromise;
-        await this.v86.run();
+        const instance = await this.#readyInstance();
+        await instance.run();
     }
 
     /** Pause execution (the tab stays alive, nothing is lost). */
@@ -260,6 +298,8 @@ export class VmEngine {
     async destroy() {
         const v86 = this.v86;
         this.v86 = null;
+        this.#readyResolve?.();
+        this.#readyResolve = null;
         this.startedAt = 0;
         if (!v86) {
             this.#setState("idle");
@@ -274,6 +314,7 @@ export class VmEngine {
     }
 
     setKeyboardEnabled(enabled) {
+        this.keyboardEnabled = Boolean(enabled);
         try {
             this.v86?.keyboard_set_enabled?.(enabled);
         } catch {
@@ -309,15 +350,35 @@ export class VmEngine {
         }
     }
 
-    /** Type a string into the guest as if the user typed it. */
-    sendText(text) {
+    /**
+     * Reviewed, US-ASCII keystrokes (not a shared clipboard). v86's text API
+     * silently ignores input while its keyboard adapter is disabled. Enable
+     * it only for each synchronous injection, never while host events run;
+     * yielding between characters also prevents overflow of the guest PS/2 FIFO.
+     */
+    async sendText(text) {
         if (!text) return;
-        try {
-            this.v86?.keyboard_send_text?.(text);
-            this.#log(`Typed ${text.length} character(s) into the guest.`);
-        } catch (error) {
-            this.#log(describeError(error), "warn");
+        const normalized = text.replace(/\r\n?/g, "\n").replace(/\t/g, "    ");
+        if (normalized.length > 5000) throw new Error("Send at most 5,000 characters at a time; this path types keystrokes into the guest.");
+        if (/[^\x08\x0a\x20-\x7e]/.test(normalized)) throw new Error("This keyboard path supports US-ASCII only. Non-ASCII text was not sent.");
+        const instance = await this.#readyInstance();
+        if (!this.isRunning) throw new Error("Resume the guest before sending text.");
+        this.releaseModifiers();
+        // Let the guest finish processing modifier releases / keyboard ACKs
+        // before the first character (otherwise some guests drop that key).
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        for (const character of normalized) {
+            if (this.v86 !== instance || !this.isRunning) throw new Error("Text sending stopped because the guest is no longer running.");
+            const wasEnabled = this.keyboardEnabled;
+            let pending;
+            try {
+                this.setKeyboardEnabled(true);
+                pending = instance.keyboard_send_text(character);
+            } finally { this.setKeyboardEnabled(wasEnabled); }
+            await pending;
+            await new Promise((resolve) => setTimeout(resolve, 2));
         }
+        this.#log(`Typed ${normalized.length} character(s) into the guest${text.includes("\t") ? " (tabs expanded to four spaces)" : ""}.`);
     }
 
     /** @returns {string|null} a PNG data URL */
@@ -332,11 +393,13 @@ export class VmEngine {
     }
 
     /** Ask the browser for pointer lock (must be called from a user gesture). */
-    lockMouse() {
+    async lockMouse(target = this.container) {
+        if (!target?.requestPointerLock) throw new Error("Mouse capture is not supported by this browser.");
         try {
-            this.v86?.lock_mouse?.();
+            await target.requestPointerLock({ unadjustedMovement: true });
         } catch {
-            /* pointer lock can be denied; the guest still gets relative motion */
+            // Some browsers support pointer lock but not raw mouse movement.
+            await target.requestPointerLock();
         }
     }
 
@@ -358,23 +421,37 @@ export class VmEngine {
     }
 
     /**
-     * Save the full machine state (CPU, RAM, disks, screen) as a compressed
+     * Save the full machine state (CPU, RAM, disks, screen) as a
      * buffer that can be restored later.
      * @returns {Promise<ArrayBuffer>}
      */
     async saveState() {
         if (!this.v86) throw new Error("Boot the machine before saving its state.");
-        this.#log("Compressing machine state — large machines take a few seconds…");
-        const state = await this.v86.save_state();
-        this.#log(`State saved (${Math.round(state.byteLength / 1024 / 1024)} MB compressed).`, "ok");
-        return state;
+        const instance = await this.#readyInstance();
+        const wasRunning = this.isRunning;
+        this.#log("Saving machine state — large machines take a few seconds…");
+        try {
+            if (wasRunning) await this.pause();
+            const state = await instance.save_state();
+            this.#log(`State saved (${Math.round(state.byteLength / 1024 / 1024)} MB).`, "ok");
+            return state;
+        } finally {
+            if (wasRunning && this.v86 === instance) await this.run();
+        }
     }
 
     /** @param {ArrayBuffer} state */
     async restoreState(state) {
         if (!this.v86) throw new Error("Boot the machine before restoring a state.");
-        await this.v86.restore_state(state);
-        this.#log("State restored.", "ok");
+        const instance = await this.#readyInstance();
+        const wasRunning = this.isRunning;
+        try {
+            if (wasRunning) await this.pause();
+            await instance.restore_state(state);
+            this.#log("State restored.", "ok");
+        } finally {
+            if (wasRunning && this.v86 === instance) await this.run();
+        }
     }
 
     /** Attach a different CD-ROM/disc while the machine runs. */

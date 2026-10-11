@@ -6,7 +6,7 @@
  * assets/images/ or `links` that point at an ISO the user downloads and opens.
  *
  * `status`:
- *   "instant"  — ships with the app, boots in seconds, no download needed
+ *   "instant"  — built in, no ISO to save; the Linux desktop still needs boot time
  *   "works"    — 32-bit (i386) release that boots in v86, bring the ISO
  *   "tricky"   — 32-bit but heavy: expect a slow boot and a slow desktop
  *   "blocked"  — 64-bit only: cannot run, v86 has no 64-bit long mode
@@ -15,6 +15,35 @@
 /** @typedef {"instant"|"works"|"tricky"|"blocked"} OsStatus */
 
 export const CATALOG = [
+    {
+        id: "alpine-browser",
+        name: "Alpine Linux",
+        version: "3.23 · Dillo desktop",
+        family: "Linux",
+        desktop: "Fluxbox + Dillo browser",
+        browser: "Dillo",
+        arch: "i386",
+        status: "instant",
+        summary: "A real Linux desktop with a graphical browser already installed. Small files load on demand — no large ISO to save.",
+        sizeBytes: 75_763_186,
+        device: "filesystem",
+        ramMB: 256,
+        vgaMB: 8,
+        nicType: "virtio",
+        bundled: { path: "assets/images/alpine-browser/fs.json", fileName: "fs.json" },
+        filesystem: {
+            baseurl: "assets/images/alpine-browser/rootfs/",
+            cmdline: "rw root=host9p rootfstype=9p rootflags=trans=virtio,cache=loose modules=virtio_pci tsc=reliable random.trust_cpu=on mitigations=off vga=0x344 video=vesafb:ypan,vremap:8 console=tty0 console=ttyS0,115200",
+        },
+        notes: [
+            "Dillo opens a local welcome page automatically. Right-click the desktop for the browser or a terminal.",
+            "Dillo supports basic pages and HTTPS, not JavaScript, streaming video or modern web apps. It is not a Firefox replacement.",
+            "Internet is off by default. Before booting, choose Machine → Network → your trusted relay, or opt into the third-party public relay.",
+            "The guest uses 256 MB RAM plus emulator overhead. Booting can take a minute or more; no ISO or persistent installation is saved.",
+            "Guest changes are temporary. Browser-session saves are not yet supported for this demand-loaded filesystem.",
+        ],
+        links: [],
+    },
     /* ------------------------------------------------------------------ *
      * Instant demos — small images that live in this repository
      * ------------------------------------------------------------------ */
@@ -33,7 +62,7 @@ export const CATALOG = [
         vgaMB: 4,
         bundled: { path: "assets/images/tiny-linux.iso", fileName: "tiny-linux.iso" },
         notes: [
-            "Log in as root (no password) and try `uname -a`, `ls /`, `cat /proc/cpuinfo`.",
+            "The bundled image opens a shell (look for `/root%`). Try `uname -a`, `ls /`, `cat /proc/cpuinfo`.",
             "Network works with the NE2000 card: `ip link set eth0 up` + `udhcpc -i eth0`.",
             "Booting takes ~10 seconds — good for testing settings and keyboard/mouse capture.",
         ],
@@ -158,13 +187,15 @@ export const CATALOG = [
         desktop: "Xfce",
         arch: "i386",
         status: "tricky",
-        summary: "The last 32-bit Mint. Xfce edition is the lightest of the three Mint flavours and therefore the best pick here.",
+        summary: "Legacy, unsupported Mint for experiments only. Xfce is lighter than Cinnamon, but booting in v86 is slow and not guaranteed.",
+        legacy: true,
         sizeBytes: 1_973_420_032,
         device: "cdrom",
         ramMB: 512,
         vgaMB: 8,
         notes: [
-            "Pick `linuxmint-19.3-xfce-32bit.iso` — the 1.8 GB 32-bit Xfce image.",
+            "Stream `linuxmint-19.3-xfce-32bit.iso` from a verified host — no ISO file to save locally.",
+            "Mint 19.3 is out of security support. Do not use it for private accounts or everyday computing.",
             "Mint 20 and later are 64-bit only; 19.3 is the newest Mint that can run in an x86 emulator.",
             "Cinnamon 32-bit exists too but is far heavier — avoid it on emulated hardware.",
         ],
@@ -187,6 +218,33 @@ export const CATALOG = [
      * Other genuinely 32-bit Linuxes that work well
      * ------------------------------------------------------------------ */
     {
+        id: "antix-26.1-386",
+        name: "antiX",
+        version: "26.1 (386 full)",
+        family: "Debian",
+        desktop: "IceWM / Fluxbox",
+        browser: "Firefox ESR",
+        arch: "i386",
+        status: "tricky",
+        summary: "Full desktop with Firefox ESR included. A heavier alternative to the built-in Dillo desktop; this release is not boot-verified here.",
+        sizeBytes: 2_300_000_000,
+        device: "cdrom",
+        ramMB: 512,
+        vgaMB: 8,
+        nicType: "virtio",
+        notes: [
+            "antiX's official 26.1 release includes Firefox ESR in the full edition, alongside IceWM and Fluxbox. Core has no graphical browser.",
+            "Choose antiX-26.1_386-full.iso, not x64. Its ISO is about 2.3 GB: stream only from a verified CORS/Range host.",
+            "This is an experimental catalogue option, not a bundled or boot-tested guest. The emulator may be too slow for Firefox.",
+            "Do not assume a 32-bit Firefox build has current security support. For sensitive accounts and modern web apps, use a supported 64-bit desktop remotely.",
+        ],
+        links: [
+            { label: "antiX-26.1_386-full.iso (official SourceForge)", url: "https://sourceforge.net/projects/antix-linux/files/Final/antiX-26.1/antiX-26.1_386-full.iso/download", kind: "direct" },
+            { label: "Official release: included software", url: "https://antixlinux.com/antix-26-1-released/", kind: "page" },
+            { label: "Checksums and signatures", url: "https://sourceforge.net/projects/antix-linux/files/Final/antiX-26.1/", kind: "page" },
+        ],
+    },
+    {
         id: "antix-23.2-386",
         name: "antiX",
         version: "23.2 (386 full)",
@@ -194,7 +252,8 @@ export const CATALOG = [
         desktop: "IceWM / Fluxbox",
         arch: "i386",
         status: "works",
-        summary: "MX Linux's lightweight sibling, still shipping 32-bit images. The best odds of a responsive desktop in an emulator.",
+        summary: "Older antiX full desktop with Firefox ESR included. Prefer the built-in Alpine browser demo or explore the newer antiX 26.1 full edition.",
+        browser: "Firefox ESR (older image)",
         sizeBytes: 1_700_000_000,
         device: "cdrom",
         ramMB: 512,

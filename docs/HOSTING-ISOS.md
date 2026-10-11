@@ -1,8 +1,13 @@
 # Hosting disk images for the “From URL” tab
 
-The **From disk** tab is always the fastest and most private route: the browser reads the ISO
-straight off your machine. The **From URL** tab exists for the case where you want a boot to
-start with a single click — for a demo, a workshop, or a kiosk.
+The **Stream URL** tab is the low-storage route: the image stays on its host and only
+requested blocks are fetched. **Streaming only** is checked by default: unavailable
+streaming stops the boot rather than falling back to a full multi-GB download.
+
+**From disk** remains useful if you already have an ISO. The browser reads it locally;
+local files are never uploaded. Streaming does not offload CPU/RAM or guarantee zero
+browser cache use. For a current, persistent Mint desktop on server hardware, see
+[REMOTE-MINT.md](REMOTE-MINT.md).
 
 Two things have to be true for a URL to work:
 
@@ -11,8 +16,12 @@ Two things have to be true for a URL to work:
 | **CORS** — `Access-Control-Allow-Origin` | Without it the browser refuses to hand the bytes to the page. Most public mirrors do not send this header, which is why they fail here. |
 | **Range requests** — `Accept-Ranges: bytes` + `Content-Range` | v86 then fetches only the 64 KB blocks the guest reads, instead of pulling gigabytes into memory. Without it the whole file is downloaded first. |
 
-Images above ~1.5 GB also need the browser to have that much address space free when Range
-requests are unavailable.
+The probe verifies an actual `206` and `Content-Range: bytes 0-1/<size>`. A `200` response
+is cancelled immediately even if it advertises `Accept-Ranges: bytes`. The host must
+allow v86's `Range` and `X-Accept-Encoding` request headers, and expose `Content-Range`,
+`Content-Length` and `Accept-Ranges` to the browser. HEAD alone does not prove streaming.
+Small full downloads into RAM are an explicit opt-out from streaming-only and are capped
+at 512 MB, including when the server does not send a size header.
 
 ## Which links work as-is?
 
@@ -23,10 +32,28 @@ requests are unavailable.
 | jsDelivr (serves GitHub content) | ✅ `*` | ✅ | ✅ Yes, files up to 20 MB |
 | S3 / Cloudflare R2 / Backblaze B2 (configured, see below) | ✅ when configured | ✅ | ✅ Yes |
 | nginx / Caddy you control | ✅ when configured | ✅ | ✅ Yes |
-| Distro mirrors, Ubuntu `cdimage`, SourceForge, archive.org | ❌ usually | ✅ | ❌ No — download first, then use **From disk** |
+| Distro mirrors, Ubuntu `cdimage`, SourceForge, archive.org | ❌ often | ✅ often | Check in the browser; otherwise use a configured relay / another host |
 
-If you only need the VM for yourself, self-hosting an ISO is rarely worth it — downloading the
-file and picking it is simpler, and it is the path the interface nudges you towards.
+These are hosting patterns, not availability guarantees. Always use **Check link**;
+headers can vary across hosts, redirects and deployments. You do not have to store a
+large ISO on your device when streaming works.
+
+## Optional Node Mint relay
+
+`npm start` includes a diskless relay for the named legacy Mint 19.3 image. It forwards
+only bounded, verified ranges, never a full ISO, and no user-supplied URL can turn it into
+an open proxy. A trusted alternate upstream can be configured by the server operator:
+
+```bash
+MINT_ISO_URL="https://your-host.example/linuxmint-19.3-xfce-32bit.iso" npm start
+```
+
+The upstream must actually return `206`, an exact `Content-Range`, a matching length and
+uncompressed binary bytes. The server must be able to reach it. Responses use `no-store`;
+there is no server disk cache. Source checks prove transport, not ISO authenticity —
+verify images before hosting them. **Explore Mint** tries this relative endpoint first.
+GitHub Pages cannot run the relay; direct CORS-enabled streaming still works there.
+Details and the separate remote-VM route: [REMOTE-MINT.md](REMOTE-MINT.md).
 
 ## GitHub Releases (the easiest host for a big ISO)
 
@@ -48,7 +75,10 @@ and 100 MB per file, and should not be used to host ISOs.
 location /isos/ {
     root /srv/vm;
     add_header Access-Control-Allow-Origin "*" always;
-    add_header Accept-Ranges bytes always;      # ranges are on by default for static files
+    add_header Access-Control-Allow-Headers "Range, X-Accept-Encoding" always;
+    add_header Access-Control-Expose-Headers "Content-Range, Content-Length, Accept-Ranges" always;
+    add_header Cache-Control "no-store" always;
+    # nginx serves byte ranges automatically; do not merely advertise support.
     types { application/octet-stream iso img raw bin; }
     gzip off;                                    # ranges + compression do not mix
 }
@@ -58,7 +88,12 @@ location /isos/ {
 
 ```caddy
 example.com {
-    header /isos/* Access-Control-Allow-Origin "*"
+    header /isos/* {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Headers "Range, X-Accept-Encoding"
+        Access-Control-Expose-Headers "Content-Range, Content-Length, Accept-Ranges"
+        Cache-Control "no-store"
+    }
     file_server
 }
 ```
@@ -117,5 +152,7 @@ curl -sI -H "Origin: https://example.org" -H "Range: bytes=0-1" \
 #   access-control-allow-origin: *
 ```
 
-No `access-control-allow-origin` means the URL tab cannot work — download the file and use
-**From disk**, or re-host it yourself.
+No `access-control-allow-origin` / exposed range headers means direct browser streaming
+cannot work. Use a configured server relay, a suitable host, or **From disk** only if you
+already have space for the image. A successful HEAD is not enough; test a small ranged
+GET too. The application does that automatically.

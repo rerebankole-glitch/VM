@@ -88,6 +88,7 @@ jobs:
                   mkdir -p _site
                   cp -r index.html app assets docs _site/
                   cp .nojekyll _site/.nojekyll
+                  cp LICENSE NOTICE README.md _site/
                   du -sh _site
                   find _site -maxdepth 2 -type d | sort
 

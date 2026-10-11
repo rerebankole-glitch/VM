@@ -80,7 +80,7 @@ test("download links are reachable from step 1, not hidden in step 2", () => {
 
 test("the v86 event names the app listens for are documented by v86 itself", () => {
     const types = read("assets/v86/v86.d.ts");
-    const events = new Set([...engineJs.matchAll(/add_listener\("([^"]+)"/g)].map((m) => m[1]));
+    const events = new Set([...engineJs.matchAll(/(?:add_listener|on)\("([^"]+)"/g)].map((m) => m[1]));
     assert.ok(events.size >= 5, "expected the engine to subscribe to several events");
     for (const event of events) {
         assert.ok(types.includes(`"${event}"`), `v86.d.ts does not declare the "${event}" event`);

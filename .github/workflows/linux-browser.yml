@@ -1,11 +1,8 @@
 name: Prepare the lightweight Linux browser
 
 # Image preparation runs in the cloud, not on the visitor's low-storage PC.
-# Only builder changes trigger it; the resulting asset commit cannot loop.
+# Rebuilding is explicit; normal site/config changes do not fetch large sources.
 on:
-    push:
-        branches: [arena/ad819641-vm]
-        paths: [tools/linux-browser/**, .github/workflows/linux-browser.yml]
     workflow_dispatch:
 
 permissions:

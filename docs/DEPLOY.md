@@ -87,6 +87,12 @@ built-in *Tiny Linux* image selected. You should see:
 3. `assets/images/tiny-linux.iso` load (5.4 MB), after which the BIOS text appears and the
    guest boots to a shell.
 
+For the featured **Linux + browser** desktop, expect `alpine-browser/fs.json` and
+many `rootfs/*.bin.zst` requests instead of an ISO. Allow a few minutes on a cold boot.
+You should see Dillo's local welcome page; follow its second local-page link to verify
+navigation, not merely kernel text. Guest internet is a separate, explicit relay opt-in.
+The large corresponding-source release is not part of the Pages payload.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
