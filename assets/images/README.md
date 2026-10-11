@@ -33,3 +33,17 @@ small Linux images, hobby operating systems. Add the file here, list it in
 
 Keep an eye on the total size: GitHub warns above 50 MB per file and rejects
 above 100 MB, and every added megabyte is downloaded by every visitor.
+
+
+## Included Alpine Linux browser desktop
+
+`alpine-browser/` contains a prepared Alpine Linux 3.23 x86 filesystem with Fluxbox,
+Dillo and a terminal. It is **not an ISO**: v86 loads its compressed objects from this
+site. The compressed filesystem payload is about **72 MiB**; booting can read many
+of its objects, so this is not a promise of zero network or browser-cache storage.
+The visitor never needs to save an installer or multi-gigabyte disk image.
+
+`alpine-browser/manifest.json` records kernel/package versions and the exact
+corresponding-source release. Its own `SHA256SUMS` covers every deployed object.
+The recursive asset budget is now 110 MiB, enforced by tests; source archives and
+uncompressed rootfs exports stay outside Git. See [the Linux browser guide](../../docs/LINUX-BROWSER.md).

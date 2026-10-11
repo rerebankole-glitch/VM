@@ -59,9 +59,17 @@ test("demo images match their recorded checksums", () => {
     }
 });
 
-test("vendored assets stay small enough for a Git repository", () => {
-    const total = ["assets/v86", "assets/images"]
-        .flatMap((dir) => fs.readdirSync(path.join(ROOT, dir)).map((f) => path.join(ROOT, dir, f)))
-        .reduce((sum, file) => sum + fs.statSync(file).size, 0);
-    assert.ok(total < 60 * 1024 * 1024, `vendored assets are ${(total / 1e6).toFixed(1)} MB — too big to commit`);
+test("vendored assets stay bounded, including every on-demand filesystem file", () => {
+    const files = [];
+    const walk = (dir) => {
+        for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+            const file = path.join(dir, item.name);
+            if (item.isDirectory()) walk(file);
+            else files.push(file);
+        }
+    };
+    for (const dir of ["assets/v86", "assets/images"]) walk(path.join(ROOT, dir));
+    const total = files.reduce((sum, file) => sum + fs.statSync(file).size, 0);
+    assert.ok(total < 110 * 1024 * 1024, `vendored assets are ${(total / 1e6).toFixed(1)} MB — too big to commit`);
+    assert.ok(files.length < 5000, "the static guest must not become an unbounded generated dataset");
 });

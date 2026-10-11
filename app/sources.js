@@ -1,37 +1,33 @@
 /**
- * Turning "where is the disk image?" into something v86 can boot.
- *
- * Three kinds of source are supported:
- *
- *   bundled  an image that ships in assets/images/ (nothing to download)
- *   file     a file the user picked / dropped (never uploaded anywhere)
- *   url      a remote image, used with HTTP Range requests when the server
- *            supports them, otherwise downloaded fully into memory first
- *
- * v86 accepts `{ url }`, `{ buffer: ArrayBuffer }` or `{ buffer: File }`.
- * A plain `File` is the best option for very large ISOs: v86 then reads only
- * the 64 KB blocks the guest asks for, straight off the user's disk.
+ * Disk images stay either on the host, in RAM, or in a user-picked file.
+ * Remote streaming must be proven with an actual, correctly sized HTTP 206;
+ * an Accept-Ranges header alone is not enough.
  */
 
-/** Above this size a picked file is streamed from disk instead of read into RAM. */
 export const RAM_LIMIT_BYTES = 512 * 1024 * 1024;
+export const PROBE_TIMEOUT_MS = 12_000;
 
 /**
  * @typedef {object} DiskSource
- * @property {"bundled"|"file"|"url"} kind
- * @property {string} label          human readable summary
+ * @property {"bundled"|"filesystem"|"file"|"url"} kind
+ * @property {string} label
  * @property {number} sizeBytes
- * @property {string} device         "cdrom" | "fda" | "hda"
+ * @property {string} device "cdrom" | "fda" | "hda"
  * @property {File} [file]
  * @property {string} [url]
+ * @property {boolean} [acceptRanges]
+ * @property {boolean} [streamOnly]
  */
 
-/**
- * Describe a bundled image from the catalogue.
- * @param {import("./catalog.js").CATALOG[number]} entry
- * @returns {DiskSource}
- */
 export function bundledSource(entry) {
+    if (entry.filesystem) {
+        return {
+            kind: "filesystem", label: `${entry.name} + ${entry.browser}`, sizeBytes: entry.sizeBytes,
+            device: "filesystem", url: entry.bundled.path, bundledPath: entry.bundled.path,
+            filesystem: { baseurl: entry.filesystem.baseurl, basefs: { url: entry.bundled.path } },
+            cmdline: entry.filesystem.cmdline,
+        };
+    }
     return {
         kind: "bundled",
         label: entry.bundled.path.split("/").pop(),
@@ -42,110 +38,128 @@ export function bundledSource(entry) {
     };
 }
 
-/**
- * Inspect a URL before committing to a multi-gigabyte boot: is it reachable
- * from the browser (CORS), how big is it, and does it honour Range requests?
- *
- * @param {string} url
- * @returns {Promise<{ok: boolean, error?: string, size?: number, acceptRanges: boolean,
- *                    cors: boolean, contentType?: string, notes: string[]}>}
- */
-export async function probeUrl(url) {
-    const notes = [];
-    const result = { ok: false, acceptRanges: false, cors: false, notes };
+/** Only a verified range response with a known size can be streamed. */
+export function canStream(source) {
+    const size = source?.sizeBytes ?? source?.size;
+    return Boolean(source?.acceptRanges && Number.isSafeInteger(size) && size > 1);
+}
 
+/**
+ * Inspect a URL without downloading the image. A server which ignores Range
+ * has its response body cancelled immediately. HEAD is informational only.
+ */
+export async function probeUrl(url, { signal, timeoutMs = PROBE_TIMEOUT_MS } = {}) {
+    const result = { ok: false, acceptRanges: false, cors: false, notes: [] };
     let parsed;
     try {
-        // `location` only exists in a browser; the fallback keeps this module
-        // usable from Node (tests, tooling).
         const base = typeof location !== "undefined" ? location.href : "http://localhost/";
         parsed = new URL(url, base);
     } catch {
         return { ...result, error: "That is not a valid URL." };
     }
-    if (!/^https?:$/.test(parsed.protocol)) {
-        return { ...result, error: "Only http:// and https:// URLs can be used." };
+    if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) {
+        return { ...result, error: "Use an http:// or https:// URL without embedded credentials." };
+    }
+    if (typeof location !== "undefined" && location.protocol === "https:" && parsed.protocol === "http:") {
+        return { ...result, error: "This page uses HTTPS, so the image must use HTTPS too (mixed content is blocked)." };
     }
 
-    // 1. Try a tiny ranged GET; it reveals size, range support and CORS at once.
-    try {
-        const response = await fetch(parsed.href, {
-            method: "GET",
-            headers: { Range: "bytes=0-1" },
-            mode: "cors",
-            cache: "no-store",
-        });
+    const controller = new AbortController();
+    let timedOut = false;
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    const timer = setTimeout(() => { timedOut = true; abort(); }, timeoutMs);
 
-        if (!response.ok && response.status !== 206) {
-            return { ...result, error: `The server answered HTTP ${response.status}.` };
-        }
-
+    const inspect = async (response, ranged) => {
         result.cors = true;
         result.contentType = response.headers.get("content-type") || undefined;
-        result.acceptRanges = response.status === 206 || /bytes/i.test(response.headers.get("accept-ranges") || "");
-
-        const contentRange = response.headers.get("content-range");
-        if (contentRange && /\/(\d+)\s*$/.test(contentRange)) {
-            result.size = Number(contentRange.match(/\/(\d+)\s*$/)[1]);
+        if (!response.ok) {
+            await response.body?.cancel?.().catch(() => {});
+            return { ...result, error: `The image host answered HTTP ${response.status}.` };
+        }
+        if (/(?:text\/|application\/(?:json|xhtml\+xml))/i.test(result.contentType || "")) {
+            await response.body?.cancel?.().catch(() => {});
+            return { ...result, error: "This link returns a web page, not a disk image. Use a direct .iso / .img link." };
+        }
+        const range = /^bytes 0-1\/(\d+)$/.exec(response.headers.get("content-range") || "");
+        const total = range ? Number(range[1]) : 0;
+        const encoding = response.headers.get("content-encoding");
+        const lengthHeader = response.headers.get("content-length");
+        let valid = Boolean(ranged && response.status === 206 && Number.isSafeInteger(total) && total > 1
+            && (!encoding || encoding.toLowerCase() === "identity") && (lengthHeader === null || Number(lengthHeader) === 2));
+        if (valid && response.body) {
+            // Verify even a chunked 206 actually contains two bytes. Never read
+            // a 200 body; stop immediately if a lying 206 exceeds the probe.
+            const reader = response.body.getReader();
+            let bytes = 0, done = false;
+            try {
+                while (!done && bytes <= 2) {
+                    const chunk = await reader.read();
+                    done = chunk.done;
+                    bytes += chunk.value?.byteLength || 0;
+                }
+                valid = done && bytes === 2;
+            } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
         } else {
-            const length = Number(response.headers.get("content-length"));
-            // Without range support the server sends the whole file; the length
-            // header is only usable when it is a plain GET answer.
-            result.size = Number.isFinite(length) && length > 0 ? length : undefined;
+            valid = false;
         }
         await response.body?.cancel?.().catch(() => {});
-
-        if (!result.acceptRanges) {
-            notes.push("This server ignores HTTP Range requests, so the whole image has to be downloaded into memory before booting.");
+        result.acceptRanges = valid;
+        if (valid) result.size = total;
+        else if (response.status === 200) {
+            const length = Number(lengthHeader);
+            result.size = Number.isSafeInteger(length) && length > 0 ? length : undefined;
         }
-        if (!result.size) {
-            notes.push("The server did not report a file size; the exact size is required for range-based loading.");
-        }
+        if (!valid) result.notes.push("HTTP Range streaming was not verified. Streaming-only mode will refuse this image, not download the entire ISO.");
+        if (!result.size) result.notes.push("The image size is unknown. The host must expose Content-Range for streaming.");
         result.ok = true;
         return result;
-    } catch (error) {
-        // 2. Ranged GET failed (CORS or network) — retry with a plain HEAD to
-        //    tell "no CORS" apart from "file is missing".
+    };
+
+    try {
         try {
-            const head = await fetch(parsed.href, { method: "HEAD", mode: "cors" });
-            result.cors = true;
-            if (!head.ok) {
-                return { ...result, error: `The server answered HTTP ${head.status}.` };
-            }
-            const length = Number(head.headers.get("content-length"));
-            result.size = Number.isFinite(length) && length > 0 ? length : undefined;
-            result.acceptRanges = /bytes/i.test(head.headers.get("accept-ranges") || "");
-            result.ok = true;
-            notes.push("Range probing failed but the file exists — it will be downloaded fully into memory.");
-            return result;
-        } catch {
-            return {
-                ...result,
-                error:
-                    "The browser could not read this URL directly. That is usually a CORS restriction " +
-                    "(most distro mirrors do not allow cross-origin reads). Download the ISO and use " +
-                    "the “From disk” tab instead — it is faster anyway.",
-            };
+            const response = await fetch(parsed.href, {
+                headers: { Range: "bytes=0-1" }, mode: "cors", cache: "no-store", signal: controller.signal,
+            });
+            return await inspect(response, true);
+        } catch (error) {
+            if (controller.signal.aborted) throw error;
+            const head = await fetch(parsed.href, { method: "HEAD", mode: "cors", cache: "no-store", signal: controller.signal });
+            return await inspect(head, false);
         }
+    } catch {
+        if (controller.signal.aborted) {
+            return { ...result, error: timedOut ? "The image host took too long to respond. Try another host." : "Link check cancelled." };
+        }
+        return {
+            ...result,
+            error: "The browser cannot read this image host (network or CORS restrictions). " +
+                "Use a CORS + Range-enabled host, or the optional server image relay. No ISO was saved to your disk.",
+        };
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
     }
 }
 
-/**
- * Download a URL into memory, reporting progress.
- * @param {string} url
- * @param {(loaded: number, total: number) => void} [onProgress]
- * @returns {Promise<ArrayBuffer>}
- */
-export async function fetchToArrayBuffer(url, onProgress) {
-    const response = await fetch(url, { mode: "cors" });
+/** An explicit full download is bounded, including when Content-Length is missing. */
+export async function fetchToArrayBuffer(url, onProgress, { maxBytes = RAM_LIMIT_BYTES } = {}) {
+    const response = await fetch(url, { mode: "cors", cache: "no-store" });
     if (!response.ok) {
+        await response.body?.cancel?.().catch(() => {});
         throw new Error(`Download failed: HTTP ${response.status}`);
     }
     const totalHeader = Number(response.headers.get("content-length"));
-    const total = Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : 0;
-
+    const total = Number.isSafeInteger(totalHeader) && totalHeader > 0 ? totalHeader : 0;
+    const tooLarge = () => new Error("This image is too large to download into RAM. Use verified HTTP Range streaming instead.");
+    if (total > maxBytes) {
+        await response.body?.cancel?.().catch(() => {});
+        throw tooLarge();
+    }
     if (!response.body) {
         const buffer = await response.arrayBuffer();
+        if (buffer.byteLength > maxBytes) throw tooLarge();
         onProgress?.(buffer.byteLength, buffer.byteLength);
         return buffer;
     }
@@ -153,14 +167,21 @@ export async function fetchToArrayBuffer(url, onProgress) {
     const reader = response.body.getReader();
     const chunks = [];
     let loaded = 0;
-    for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        loaded += value.byteLength;
-        onProgress?.(loaded, total || loaded);
+    try {
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            loaded += value.byteLength;
+            if (loaded > maxBytes) {
+                await reader.cancel();
+                throw tooLarge();
+            }
+            chunks.push(value);
+            onProgress?.(loaded, total || loaded);
+        }
+    } finally {
+        reader.releaseLock();
     }
-
     const out = new Uint8Array(loaded);
     let offset = 0;
     for (const chunk of chunks) {
@@ -170,21 +191,13 @@ export async function fetchToArrayBuffer(url, onProgress) {
     return out.buffer;
 }
 
-/**
- * Read a picked File into an ArrayBuffer, reporting progress while it loads.
- * @param {File} file
- * @param {(loaded: number, total: number) => void} [onProgress]
- * @returns {Promise<ArrayBuffer>}
- */
 export function readFileToArrayBuffer(file, onProgress) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onprogress = (event) => {
-            onProgress?.(event.loaded, event.lengthComputable ? event.total : file.size);
-        };
+        reader.onprogress = (event) => onProgress?.(event.loaded, event.lengthComputable ? event.total : file.size);
         reader.onload = () => {
             onProgress?.(file.size, file.size);
-            resolve(/** @type {ArrayBuffer} */ (reader.result));
+            resolve(reader.result);
         };
         reader.onerror = () => reject(reader.error || new Error("Could not read that file."));
         reader.readAsArrayBuffer(file);
@@ -192,73 +205,57 @@ export function readFileToArrayBuffer(file, onProgress) {
 }
 
 /**
- * Build the v86 image descriptor for a source.
- *
  * @param {DiskSource} source
- * @param {object} [options]
- * @param {"auto"|"ram"|"stream"|"download"} [options.mode] how local/remote data is handled
- * @param {(loaded: number, total: number, label: string) => void} [options.onProgress]
- * @returns {Promise<{image: object, strategy: string, sizeBytes: number}>}
+ * @param {{mode?: string, streamOnly?: boolean, onProgress?: Function}} options
  */
 export async function resolveImage(source, options = {}) {
-    const { mode = "auto", onProgress } = options;
+    const { mode = "auto", onProgress, streamOnly = source?.streamOnly || false } = options;
     const size = source.sizeBytes || 0;
-
-    if (source.kind === "bundled") {
-        // Ships with the app: let v86 fetch it normally (it reports progress).
+    if (source.kind === "filesystem") {
         return {
-            image: { url: source.url },
-            strategy: "bundled file from this site",
-            sizeBytes: size,
+            filesystem: source.filesystem, cmdline: source.cmdline,
+            strategy: "Linux filesystem loaded on demand · no ISO to save", sizeBytes: size,
         };
     }
-
+    if (source.kind === "bundled") {
+        return { image: { url: source.url }, strategy: "small bundled image from this site", sizeBytes: size };
+    }
     if (source.kind === "url") {
-        const useRange = mode === "auto" && source.acceptRanges && source.sizeBytes;
-        if (mode === "download" || !useRange) {
-            const buffer = await fetchToArrayBuffer(source.url, (loaded, total) => onProgress?.(loaded, total, source.label));
+        // Local-file RAM settings must never accidentally force a remote ISO download.
+        if (canStream(source) && (streamOnly || (mode !== "download" && mode !== "ram"))) {
             return {
-                image: { buffer },
-                strategy: "downloaded into memory (no Range support)",
-                sizeBytes: buffer.byteLength,
+                image: { url: source.url, size, async: true },
+                strategy: "HTTP Range streaming · no ISO file to save",
+                sizeBytes: size,
             };
         }
-        return {
-            image: { url: source.url, size: source.sizeBytes, async: true },
-            strategy: "streamed on demand with HTTP Range requests",
-            sizeBytes: source.sizeBytes,
-        };
+        if (streamOnly || mode === "stream") {
+            throw new Error("Streaming-only mode is on, but this host did not prove HTTP Range support and the image size. " +
+                "Choose a streaming host or server relay. The full ISO will not be downloaded.");
+        }
+        if (size > RAM_LIMIT_BYTES) {
+            throw new Error("This ISO is too large for a full RAM download. Use HTTP Range streaming; no multi-GB download was started.");
+        }
+        const buffer = await fetchToArrayBuffer(source.url, (loaded, total) => onProgress?.(loaded, total, source.label));
+        return { image: { buffer }, strategy: "downloaded into memory (no Range support)", sizeBytes: buffer.byteLength };
     }
-
     if (source.kind === "file" && source.file) {
         const file = source.file;
-        const stream = mode === "stream" || (mode === "auto" && file.size > RAM_LIMIT_BYTES);
-        if (stream) {
-            // v86 reads the File lazily, block by block: no giant RAM copy.
+        if (mode === "stream" || (mode === "auto" && file.size > RAM_LIMIT_BYTES)) {
             return {
-                image: { buffer: file, async: true },
-                strategy: `streamed from disk as the guest reads it (${file.name})`,
-                sizeBytes: file.size,
+                image: { buffer: file, async: true }, strategy: `streamed from disk as the guest reads it (${file.name})`, sizeBytes: file.size,
             };
         }
         const buffer = await readFileToArrayBuffer(file, (loaded, total) => onProgress?.(loaded, total, file.name));
-        return {
-            image: { buffer },
-            strategy: `loaded into memory (${file.name})`,
-            sizeBytes: buffer.byteLength,
-        };
+        return { image: { buffer }, strategy: `loaded into memory (${file.name})`, sizeBytes: buffer.byteLength };
     }
-
     throw new Error("No disk image selected.");
 }
 
-/**
- * Convenience: describe a source for the UI without loading anything.
- * @param {DiskSource|null} source
- */
 export function describeSource(source) {
     if (!source) return "Nothing selected";
+    if (source.kind === "filesystem") return `On-demand Linux desktop · ${source.label}`;
     if (source.kind === "bundled") return `Built-in image · ${source.label}`;
-    if (source.kind === "url") return `Remote image · ${source.label}`;
+    if (source.kind === "url") return `Remote stream · ${source.label}`;
     return `Local file · ${source.label}`;
 }

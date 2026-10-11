@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Browser VM — boot MX Linux, Lubuntu and Linux Mint in your browser</title>
-<meta name="description" content="A complete x86 virtual machine that runs in the browser tab: boot MX Linux 19.4, Lubuntu 18.04, Linux Mint 19.3, antiX, Tiny Core, FreeDOS and KolibriOS. Static site, no build step, no server, easy to host on GitHub Pages.">
+<title>WebVM — your browser computer</title>
+<meta name="description" content="Your own browser computer: launch a real desktop, stream 32-bit Linux images without saving an ISO, and optionally remember a session. Powered by v86.">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#0b1020">
+<meta name="theme-color" content="#101719">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1020'/%3E%3Crect x='14' y='18' width='36' height='24' rx='3' fill='none' stroke='%2364d2ff' stroke-width='3'/%3E%3Crect x='22' y='46' width='20' height='4' rx='2' fill='%2364d2ff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="app/styles.css">
 </head>
@@ -15,23 +15,27 @@
 <header class="topbar">
     <div class="brand">
         <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 64 64" width="26" height="26"><rect x="10" y="14" width="44" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="5"/><rect x="22" y="50" width="20" height="5" rx="2.5" fill="currentColor"/></svg>
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4m-5-9 3-3-3-3m5 6h4"/></svg>
         </span>
         <div class="brand-text">
-            <h1>Browser VM</h1>
-            <p>MX Linux · Lubuntu · Linux Mint · antiX · Tiny Core &amp; more, booted inside your tab</p>
+            <h1>WebVM <span class="brand-tag">PERSONAL WORKSPACE</span></h1>
+            <p>Your computer, one browser tab.</p>
         </div>
     </div>
     <div class="topbar-right">
-        <span class="pill ghost" id="zoom-label" title="Screen scale">100%</span>
-        <span class="pill ghost" id="mips" title="Emulated instructions per second">— MIPS</span>
-        <span class="pill" id="status-pill">Idle</span>
-        <a class="btn ghost" data-repo-link href="https://github.com/rerebankole-glitch/VM" target="_blank" rel="noopener">GitHub</a>
+        <span class="pill ghost telemetry" id="zoom-label" title="Screen scale">100%</span>
+        <span class="pill ghost telemetry" id="mips" title="Emulated instructions per second">— MIPS</span>
+        <span class="pill" id="status-pill" role="status">Idle</span>
+        <button class="btn" id="btn-desktop" type="button" aria-pressed="false">Desktop mode</button>
+        <time id="desktop-clock" class="desktop-clock" aria-label="Current time"></time>
+        <a class="btn ghost repo-button" data-repo-link href="https://github.com/rerebankole-glitch/VM" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
 </header>
 
 <main class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" aria-label="Computer setup">
+        <div class="sidebar-heading"><span class="eyebrow">MAKE IT YOURS</span><h2>Computer setup</h2><p>Real operating systems. Your choice.</p></div>
+        <p class="setup-lock-note" id="setup-lock-note" hidden>Power off to change the system or hardware.</p>
         <nav class="tabs" role="tablist" aria-label="Setup steps">
             <button class="tab is-active" data-tab="os" role="tab" type="button"><b>1</b> System</button>
             <button class="tab" data-tab="disk" role="tab" type="button"><b>2</b> Disk image</button>
@@ -42,8 +46,8 @@
             <!-- 1. operating system -->
             <section class="tabpanel is-active" data-panel="os" role="tabpanel">
                 <p class="panel-intro">
-                    Pick what to boot. Green cards ship with this page and start in seconds;
-                    the others need a 32-bit (i386) ISO because the emulated CPU has no 64-bit mode.
+                    Pick what to boot. Green cards ship with this page; the Linux browser desktop can
+                    take a few minutes to start. Other systems need a 32-bit (i386) ISO because the emulated CPU has no 64-bit mode.
                 </p>
                 <div class="os-list" id="os-list"></div>
                 <div class="os-download" id="os-download" hidden></div>
@@ -53,8 +57,8 @@
                     <ul id="blocked-list"></ul>
                     <p class="hint">
                         v86 emulates a 32-bit x86 CPU without long mode, so amd64/x86_64 kernels
-                        cannot start. Every desktop distro still publishes 32-bit images — just not the
-                        newest ones.
+                        cannot start. Some older releases have 32-bit images. Current Mint requires a
+                        64-bit remote VM; a different theme cannot remove this CPU limitation.
                     </p>
                 </details>
             </section>
@@ -68,7 +72,7 @@
                 <div class="segmented" role="tablist" aria-label="Where the disk image comes from">
                     <button type="button" data-sourcetab="builtin" class="is-active">Built in</button>
                     <button type="button" data-sourcetab="file">From disk</button>
-                    <button type="button" data-sourcetab="url">From URL</button>
+                    <button type="button" data-sourcetab="url">Stream URL</button>
                 </div>
 
                 <div data-sourcepanel="builtin">
@@ -95,17 +99,19 @@
 
                 <div data-sourcepanel="url" hidden>
                     <label class="field">
-                        <span>Direct link to an .iso (must allow cross-origin reads)</span>
+                        <span>Image URL (CORS + byte ranges required for streaming)</span>
                         <input type="url" id="url-input" placeholder="https://example.org/linux-19.4-386.iso" spellcheck="false">
                     </label>
                     <div class="row">
                         <button class="btn" id="url-check" type="button">Check link</button>
                         <button class="btn primary" id="url-use" type="button">Use this link</button>
                     </div>
-                    <div id="url-result"></div>
+                    <label class="check"><input type="checkbox" id="stream-only" checked><span>Streaming only — never fetch the whole ISO</span></label>
+                    <div id="url-result" role="status" aria-live="polite"></div>
                     <p class="hint">
-                        Most distro mirrors refuse cross-origin reads, so this is mainly useful for
-                        ISOs you host yourself (S3, R2, nginx, or a GitHub release).
+                        Only the blocks the guest needs are transferred. You do not need to save
+                        a multi-GB ISO, but the guest still uses this computer’s CPU and RAM.
+                        The Node host can relay Mint’s image when mirrors do not allow CORS.
                     </p>
                 </div>
 
@@ -191,9 +197,20 @@
         </div>
     </aside>
 
-    <section class="workspace">
-        <div class="screen-shell">
-            <div class="screen-viewport" id="screen-viewport">
+    <section class="workspace" aria-label="Your virtual computer">
+        <div class="workspace-heading">
+            <div><span class="computer-dot" aria-hidden="true"></span><strong id="computer-name">My computer</strong><span id="computer-detail">Ready when you are</span></div>
+            <button class="btn ghost tiny" id="btn-storage-help" type="button">Storage &amp; browsers ↗</button>
+        </div>
+        <div class="screen-shell" id="screen-shell">
+            <div class="display-bar">
+                <span id="source-badge" class="source-badge">Small built-in image</span>
+                <span class="display-bar-spacer"></span>
+                <span id="input-status" role="status">Controls released</span>
+                <button class="btn ghost tiny" id="btn-grab-mouse" type="button" disabled title="For relative mice / games; Esc releases the pointer">Grab mouse</button>
+                <button class="btn ghost tiny" id="btn-release-input" type="button" disabled title="Host shortcut: Ctrl+Alt+G">Release controls</button>
+            </div>
+            <div class="screen-viewport" id="screen-viewport" tabindex="0" role="application" aria-label="Virtual machine display. Click to control; Ctrl Alt G releases controls.">
                 <div class="screen-stage" id="screen-stage">
                     <!-- v86 needs exactly this shape: a div for text mode, then a canvas. -->
                     <div id="screen_container">
@@ -201,46 +218,74 @@
                         <canvas></canvas>
                     </div>
                 </div>
-
                 <div class="screen-overlay" id="screen-overlay">
-                    <div class="overlay-card">
-                        <h2>Your virtual machine is ready to boot</h2>
-                        <ol>
-                            <li>Choose a system and a disk image on the left.</li>
-                            <li>Press <strong>Boot</strong> — everything runs locally in this tab.</li>
-                            <li>Hover the screen to type; click it to grab the mouse; <kbd>Esc</kbd> releases it.</li>
-                        </ol>
-                        <p class="hint">
-                            Live Linux ISOs are heavy for an emulator: expect a slow boot and be patient.
-                            The built-in images and Tiny Core start in seconds.
-                        </p>
+                    <div class="overlay-card" id="welcome-card">
+                        <span class="welcome-symbol" aria-hidden="true">
+                            <svg viewBox="0 0 48 48" width="42" height="42" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="8" width="36" height="25" rx="3"/><path d="M16 41h16m-8-8v8m-11-8h22m-21-15 4 4-4 4m8 0h7"/></svg>
+                        </span>
+                        <p class="eyebrow">A COMPUTER OF YOUR OWN</p>
+                        <h2>A little space.<br>A Linux computer.</h2>
+                        <p class="welcome-copy">A real Alpine Linux desktop with Dillo already installed. Open the browser, explore files, use the terminal. No installation or giant ISO to save.</p>
+                        <div class="welcome-actions">
+                            <button class="btn primary" data-quick-launch="alpine-browser" type="button">Linux + browser <span aria-hidden="true">→</span></button>
+                            <button class="btn" data-quick-launch="kolibrios" type="button">Instant desktop</button>
+                            <button class="btn ghost" data-quick-launch="tiny-linux" type="button">Linux terminal</button>
+                        </div>
+                        <label class="check quick-network"><input id="quick-linux-internet" type="checkbox"><span>Try guest internet through the public relay <small>Optional third-party service. No private accounts.</small></span></label>
+                        <p class="welcome-footnote">Dillo opens a local page first. Internet needs an optional relay; JavaScript-heavy sites need a full browser elsewhere. The instant desktop is KolibriOS, not Linux.</p>
+                        <div class="mint-launch">
+                            <span class="mint-mark" aria-hidden="true">lm</span>
+                            <div><strong>Prefer Linux Mint?</strong><span>Stream the legacy 32-bit edition. No ISO file on your disk.</span></div>
+                            <button class="btn ghost" id="quick-mint" type="button">Explore Mint →</button>
+                        </div>
+                        <div class="saved-session" id="saved-session" hidden>
+                            <div><span class="eyebrow">PICK UP WHERE YOU LEFT OFF</span><strong id="session-name"></strong><span id="session-summary"></span></div>
+                            <div class="row"><button class="btn primary" id="btn-session-resume" type="button">Resume session</button><button class="btn ghost" id="btn-session-delete" type="button">Delete saved session</button></div>
+                        </div>
                     </div>
-                    <div class="paused-banner" id="paused-banner" hidden>Paused — press Resume to continue</div>
+                    <div class="boot-card" id="boot-card" hidden>
+                        <span class="boot-spinner" aria-hidden="true"></span>
+                        <p class="eyebrow">YOUR COMPUTER IS STARTING</p>
+                        <h2 id="boot-title">Starting the guest…</h2>
+                        <p id="boot-description">Loading the virtual hardware. The desktop will appear here.</p>
+                        <p class="hint">Large Linux desktops can take several minutes in a browser emulator.</p>
+                    </div>
                 </div>
+                <div class="paused-banner" id="paused-banner" hidden>Paused — press Resume to continue</div>
+                <div class="input-tip" id="input-tip" hidden>Click the screen to control <span>·</span> <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>G</kbd> to release</div>
             </div>
 
             <div class="screen-toolbar">
                 <button class="btn primary" id="btn-start" type="button"><span id="start-hint">Boot</span></button>
                 <button class="btn" id="btn-pause" type="button" disabled>Pause</button>
-                <button class="btn" id="btn-reset" type="button" disabled>Reset</button>
-                <button class="btn" id="btn-power" type="button" disabled>Power off</button>
+                <button class="btn ghost" id="btn-reset" type="button" disabled>Restart</button>
+                <button class="btn ghost" id="btn-power" type="button" disabled>Power off</button>
                 <span class="toolbar-gap"></span>
                 <button class="btn ghost" id="btn-fit" type="button" title="Scale the screen to the window">Fit</button>
-                <button class="btn ghost" id="btn-zoom-out" type="button" title="Zoom out">−</button>
-                <button class="btn ghost" id="btn-zoom-in" type="button" title="Zoom in">+</button>
-                <button class="btn ghost" id="btn-fullscreen" type="button" title="Fullscreen (Esc to leave)">Fullscreen</button>
-                <span class="toolbar-gap"></span>
-                <button class="btn ghost" id="btn-screenshot" type="button" disabled title="Save a PNG of the screen">Screenshot</button>
-                <button class="btn ghost" id="btn-cad" type="button" disabled title="Ctrl+Alt+Delete">Ctrl+Alt+Del</button>
-                <button class="btn ghost" id="btn-type" type="button" disabled title="Send text as keystrokes">Type text</button>
-                <button class="btn ghost" id="btn-state-save" type="button" disabled title="Download a snapshot of the whole machine">Save state</button>
-                <button class="btn ghost" id="btn-state-load" type="button" disabled title="Restore a snapshot">Load state</button>
-                <input type="file" id="state-input" accept=".bin,.state,application/octet-stream" hidden>
+                <button class="btn ghost" id="btn-zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+                <button class="btn ghost" id="btn-zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+                <details class="tools-menu" id="tools-menu">
+                    <summary class="btn ghost">Tools <span aria-hidden="true">⌃</span></summary>
+                    <div class="tools-popover">
+                        <button class="btn ghost" id="btn-screenshot" type="button" disabled>Screenshot</button>
+                        <button class="btn ghost" id="btn-paste" type="button" disabled>Paste from clipboard</button>
+                        <button class="btn ghost" id="btn-cad" type="button" disabled>Ctrl+Alt+Del</button>
+                        <button class="btn ghost" id="btn-type" type="button" disabled>Type text…</button>
+                        <button class="btn ghost" id="btn-session-save" type="button" disabled>Save session here…</button>
+                        <button class="btn ghost" id="btn-state-save" type="button" disabled>Download state</button>
+                        <button class="btn ghost" id="btn-state-load" type="button" disabled>Load state file</button>
+                        <input type="file" id="state-input" accept=".bin,.state,application/octet-stream" hidden>
+                        <p>Browser saves are optional, use local space, and are capped at 128 MB. Nothing is autosaved.</p>
+                    </div>
+                </details>
+                <span class="toolbar-flex"></span>
+                <button class="btn" id="btn-fullscreen" type="button" title="Fullscreen; Ctrl+Alt+F toggles it">Fullscreen ↗</button>
             </div>
 
             <div class="type-box" id="type-box" hidden>
-                <input type="text" id="type-input" placeholder="Type here, then send — the guest receives it as keystrokes" spellcheck="false">
-                <button class="btn primary" id="type-send" type="button">Send</button>
+                <label for="type-input" class="sr-only">Text to send as US-ASCII guest keystrokes</label>
+                <textarea id="type-input" rows="3" placeholder="Paste a command (US-ASCII, up to 5,000 characters). Review before sending. Ctrl+Enter sends." spellcheck="false"></textarea>
+                <div><button class="btn primary" id="type-send" type="button">Send text</button><button class="btn ghost" id="type-close" type="button">Cancel</button></div>
             </div>
 
             <div class="statusbar">
@@ -256,42 +301,60 @@
                     <div><dt>Core</dt><dd id="v86-version">v86</dd></div>
                 </dl>
             </div>
-
-            <div class="error-box" id="error-box" hidden>
-                <strong>Something went wrong</strong>
+            <p class="session-feedback" id="session-feedback" role="status" hidden></p>
+            <div class="error-box" id="error-box" role="alert" hidden>
+                <strong>Couldn’t start this computer</strong>
                 <p id="error-text"></p>
-                <p class="hint">
-                    Common fixes: use a 32-bit ISO, download it and open it with “From disk”,
-                    or lower the memory setting.
-                </p>
-                <button class="btn ghost" type="button" onclick="document.getElementById('error-box').hidden = true">Dismiss</button>
+                <p class="hint">Try a built-in system, a verified streaming host, or less RAM. Only 32-bit x86 guests can boot here.</p>
+                <button class="btn ghost" id="error-dismiss" type="button">Dismiss</button>
             </div>
         </div>
-
-        <details class="console" open>
-            <summary>
-                Activity log
-                <button class="btn ghost tiny" id="btn-clear-log" type="button">Clear</button>
-            </summary>
+        <details class="console">
+            <summary>Activity log <button class="btn ghost tiny" id="btn-clear-log" type="button">Clear</button></summary>
             <div class="log" id="log-body"></div>
         </details>
     </section>
 </main>
 
 <footer class="footer">
-    <div>
-        <strong>Runs entirely in your browser.</strong> No server, no uploads — the guest machine is
-        emulated by <a href="https://github.com/copy/v86" target="_blank" rel="noopener">v86</a>
-        (BSD-2-Clause) with SeaBIOS, and your ISO never leaves your device.
-    </div>
+    <div><strong>Real hardware, virtually.</strong> Powered by <a href="https://github.com/copy/v86" target="_blank" rel="noopener">v86</a>. Guest CPU and RAM run in your browser. Local files are never uploaded. Streaming transfers image blocks, not a remote desktop.</div>
     <div class="footer-links">
         <a data-repo-link data-repo-path="README.md" href="#">Read me</a>
-        <a data-repo-link data-repo-path="docs/DISTROS.md" href="#">Which distros work</a>
-        <a data-repo-link data-repo-path="docs/DEPLOY.md" href="#">Host it on GitHub Pages</a>
-        <a data-repo-link data-repo-path="docs/HOSTING-ISOS.md" href="#">Host your own ISOs</a>
-        <a data-repo-link data-repo-path="docs/ARCHITECTURE.md" href="#">How it is built</a>
+        <a data-repo-link data-repo-path="docs/DISTROS.md" href="#">Compatible systems</a>
+        <a data-repo-link data-repo-path="docs/LINUX-BROWSER.md" href="#">Linux &amp; browser guide</a>
+        <a data-repo-link data-repo-path="docs/DEPLOY.md" href="#">Deploy</a>
+        <a data-repo-link data-repo-path="docs/HOSTING-ISOS.md" href="#">Image hosting</a>
+        <a data-repo-link data-repo-path="docs/REMOTE-MINT.md" href="#">Remote Linux Mint</a>
+        <a data-repo-link data-repo-path="docs/ARCHITECTURE.md" href="#">Architecture</a>
     </div>
 </footer>
+
+<dialog class="info-dialog" id="storage-dialog" aria-labelledby="storage-title">
+    <div class="dialog-heading"><span class="eyebrow">LESS STORAGE. MORE CLARITY.</span><button class="btn ghost" id="storage-close" type="button" aria-label="Close storage help">✕</button></div>
+    <h2 id="storage-title">Your disk doesn’t need the ISO.</h2>
+    <p><strong>Stream an image:</strong> the ISO stays on its host. The browser fetches the blocks the guest reads. Streaming-only mode is on by default and refuses a full download when streaming is unavailable.</p>
+    <p><strong>Still local computing:</strong> emulation uses your CPU and RAM. Browser caches can use some space. Guest files are temporary unless you explicitly save a snapshot or disk. “Save session here” is optional local storage, not cloud storage.</p>
+    <h3>Why not the latest Linux Mint?</h3>
+    <p>v86 emulates a 32-bit x86 CPU. Mint 20 and newer need a 64-bit CPU. Mint 19.3 Xfce is an old compatible candidate, but is unsupported and can be very slow. Compatibility is not a guarantee of a successful boot.</p>
+    <h3>Linux with a browser, without an ISO</h3>
+    <p>The built-in <strong>Alpine Linux + Dillo</strong> desktop loads small compressed files from this site as needed. It has a real graphical browser and terminal. Dillo does not run JavaScript; internet needs an optional relay, and guest work stays temporary.</p>
+    <p><a data-repo-link data-repo-path="docs/LINUX-BROWSER.md" href="#" target="_blank" rel="noopener">Browser choices, networking and source downloads ↗</a></p>
+    <h3>Want Mint to be your everyday computer?</h3>
+    <p>Use a <strong>persistent remote 64-bit VM</strong> with a browser desktop (for example, QEMU/KVM + noVNC). Its ISO, installation and files live on the server, and your computer only displays the screen. Static GitHub Pages cannot host that VM.</p>
+    <div class="row"><button class="btn primary" id="storage-explore-mint" type="button">Explore legacy Mint</button><a class="btn" data-repo-link data-repo-path="docs/REMOTE-MINT.md" href="#" target="_blank" rel="noopener">Remote Mint guide ↗</a></div>
+</dialog>
+
+<dialog class="info-dialog" id="mint-dialog" aria-labelledby="mint-title">
+    <div class="dialog-heading"><span class="eyebrow">LINUX MINT · EXPERIMENTAL</span><button class="btn ghost" id="mint-close" type="button" aria-label="Close Mint setup">✕</button></div>
+    <div class="dialog-os"><span class="mint-mark" aria-hidden="true">lm</span><h2 id="mint-title">Mint, without saving an ISO.</h2></div>
+    <p>We’ll check for a server image relay, then a direct mirror with CORS and real byte-range support. If neither works, we stop — <strong>no automatic multi-GB download</strong>.</p>
+    <div class="legacy-warning"><strong>Legacy Mint 19.3 Xfce · 32-bit</strong><p>This release no longer receives security updates. Use it for experiments, not private accounts or everyday work. Mint 20+ cannot boot in v86.</p></div>
+    <p class="hint">A successful source check only proves streaming. A live desktop may take many minutes and needs 512 MB guest RAM plus emulator overhead. It is temporary, not an installed remote computer.</p>
+    <label class="check"><input type="checkbox" id="mint-ack"><span>I understand this is an unsupported, experimental guest.</span></label>
+    <p id="mint-stream-status" role="status" aria-live="polite"></p>
+    <div class="row"><button class="btn primary" id="mint-stream" type="button" disabled>Stream legacy Mint →</button><button class="btn" id="mint-cancel" type="button">Not now</button></div>
+    <p class="hint">For current Mint with permanent server storage, see the <a data-repo-link data-repo-path="docs/REMOTE-MINT.md" href="#" target="_blank" rel="noopener">remote VM guide</a>.</p>
+</dialog>
 
 <script src="assets/v86/libv86.js"></script>
 <script type="module" src="app/app.js"></script>

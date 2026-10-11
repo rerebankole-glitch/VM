@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { getEntry } from "../app/catalog.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const V86_DIR = path.join(ROOT, "assets", "v86");
@@ -135,4 +136,33 @@ test("the public API surface the interface relies on is present", async () => {
     assert.equal(emulator.is_running(), false);
     await emulator.run();
     await emulator.destroy();
+});
+
+
+test("the demand-loaded Alpine guest starts its native Dillo browser, not just the kernel", { timeout: 190_000 }, async () => {
+    const entry = getEntry("alpine-browser");
+    let serial = "";
+    const emulator = new V86(baseOptions({
+        memory_size: entry.ramMB * 1024 * 1024,
+        vga_memory_size: entry.vgaMB * 1024 * 1024,
+        filesystem: {
+            basefs: { url: path.join(ROOT, entry.bundled.path) },
+            baseurl: path.join(ROOT, entry.filesystem.baseurl),
+        },
+        bzimage_initrd_from_filesystem: true,
+        cmdline: entry.filesystem.cmdline,
+    }));
+    let timer;
+    try {
+        await new Promise((resolve, reject) => {
+            timer = setTimeout(() => reject(new Error(`Native browser did not open. Serial tail:\n${serial.slice(-9000)}`)), 180_000);
+            emulator.add_listener("download-error", (event) => reject(new Error(`Guest object missing: ${event.file_name}`)));
+            emulator.add_listener("serial0-output-byte", (byte) => {
+                serial += String.fromCharCode(byte);
+                if (serial.includes("WEBVM_BROWSER_WINDOW_READY")) resolve();
+            });
+        });
+        assert.match(serial, /Linux version/);
+        assert.ok(emulator.get_instruction_counter() > 5_000_000);
+    } finally { clearTimeout(timer); await emulator.destroy(); }
 });

@@ -129,3 +129,12 @@ export function throttle(fn, ms) {
         }
     };
 }
+
+/** Tiny preferences must never prevent booting in private / storage-blocked mode. */
+export function readStoredString(key, fallback = "") {
+    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
+
+export function storeString(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* optional preference only */ }
+}

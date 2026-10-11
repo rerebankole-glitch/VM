@@ -33,7 +33,18 @@ components below, which keep their own licences.
    These are unmodified redistributions of freely licensed operating systems.
    See assets/images/README.md for checksums.
 
-No part of the operating systems offered for download through the interface
-(MX Linux, Ubuntu/Lubuntu, Linux Mint, Debian, antiX, Alpine, Tiny Core,
-Arch Linux 32) is distributed with this repository; the interface only links
-to their official download locations.
+5. Alpine Linux / Fluxbox / Dillo desktop
+   Files: assets/images/alpine-browser/fs.json and rootfs/*.bin.zst
+   Distribution: Alpine Linux 3.23 x86, prepared from signature-verified APKs.
+   Licences: individual packages retain their GPL, LGPL, MIT, BSD and other
+             licences; the application MIT licence does not relicense them.
+   Provenance and exact package versions: assets/images/alpine-browser/manifest.json
+   Package sources, Alpine build recipes/patches and licence notices:
+     https://github.com/rerebankole-glitch/VM/releases/download/alpine-browser-sources-38149903453-1/alpine-browser-sources.tar.zst
+   GPL/LGPL texts are accessible inside the guest in /opt/webvm/licenses/.
+   Current WebVM-owned guest configuration: tools/linux-browser/guest/.
+   See docs/LINUX-BROWSER.md for source, build, checksums and resource limits.
+
+Other catalogue ISO distributions (MX Linux, Ubuntu/Lubuntu, Linux Mint,
+Debian, antiX, stock Alpine, Tiny Core, Arch Linux 32) are linked to their
+upstream download locations, not bundled with this repository.

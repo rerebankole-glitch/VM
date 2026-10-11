@@ -11,13 +11,17 @@ import {
     BOOT_ORDERS, NET_BACKENDS, NIC_TYPES, VmEngine, describeError,
 } from "./engine.js";
 import {
-    RAM_LIMIT_BYTES, bundledSource, describeSource, probeUrl, readFileToArrayBuffer, resolveImage,
+    RAM_LIMIT_BYTES, bundledSource, canStream, describeSource, probeUrl, readFileToArrayBuffer, resolveImage,
 } from "./sources.js";
 import {
     clamp, downloadBlob, escapeHtml, fmtBytes, fmtDuration, fmtNumber, fileNameFromUrl,
-    readStoredJson, shortenUrl, storeJson,
+    readStoredJson, readStoredString, shortenUrl, storeJson, storeString,
 } from "./util.js";
 
+import { ScreenInput } from "./input.js";
+import { SessionStore, SESSION_LIMIT_BYTES, canRememberSession, sessionMetadata, validateSession } from "./sessions.js";
+
+const UI_KEY = "webvm.preferences.v1";
 const SETTINGS_KEY = "browser-vm.settings.v1";
 const REPO_URL = "https://github.com/rerebankole-glitch/VM";
 
@@ -45,7 +49,7 @@ const defaults = () => ({
 
 const state = {
     /** @type {string} */
-    selectedId: "tiny-linux",
+    selectedId: "alpine-browser",
     /** Which sidebar step is showing: "os" | "disk" | "machine". */
     tab: "os",
     /** @type {import("./sources.js").DiskSource|null} */
@@ -55,6 +59,12 @@ const state = {
     fit: true,
     zoom: 1,
     busy: false,
+    sourceBusy: false,
+    sessionBusy: false,
+    active: null,
+    sessionSummary: null,
+    coreVersion: "",
+    ui: { desktopMode: false, streamOnly: true, ...readStoredJson(UI_KEY, {}) },
     bootStartedAt: 0,
     /** @type {any} */
     lastState: null,
@@ -74,6 +84,11 @@ const engine = new VmEngine({
     },
 });
 
+let screenInput = null;
+let streamController = null;
+const sessionStore = new SessionStore();
+let versionPromise = null;
+
 persistableDefaultsFix();
 
 /* ------------------------------------------------------------------ *
@@ -88,16 +103,25 @@ function init() {
     bindStepTabs();
     bindScreenInteractions();
     bindToolbar();
-    bindKeyboardShortcuts();
+    bindDesktopControls();
+    bindDialogs();
+    bindSessions();
 
-    const remembered = localStorage.getItem("browser-vm.last-os");
+    const remembered = readStoredString("browser-vm.last-os");
     selectOs(getEntry(remembered) ? remembered : state.selectedId, { silent: true });
     applyMachineToForm();
     setSourceTab(state.sourceTab);
+    $("#stream-only").checked = state.ui.streamOnly !== false;
+    setDesktopMode(Boolean(state.ui.desktopMode), { persist: false });
     setStatus("idle");
-    log("Ready. Pick an operating system, then press Start.", "ok");
-    log(`Emulator: v86 (BSD-2-Clause). Guest images stay on your machine — nothing is uploaded.`);
+    log("Ready. Start the desktop or choose a system. Click its screen to control it.", "ok");
+    log("Local files are never uploaded. Remote images can stream; the guest CPU and RAM still run in this browser.");
     updateFooterInfo();
+    refreshSavedSession();
+    refreshControls();
+    const clock = () => { $("#desktop-clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); };
+    clock();
+    window.setInterval(clock, 30_000);
 }
 
 /* ------------------------------------------------------------------ *
@@ -142,9 +166,11 @@ function buildOsList() {
         const badges = [
             `<span class="badge arch">${escapeHtml(entry.arch)}</span>`,
             entry.status === "instant" ? `<span class="badge instant">built in</span>` : "",
-            entry.status === "tricky" ? `<span class="badge slow">slow but real</span>` : "",
+            entry.browser ? `<span class="badge instant">${escapeHtml(entry.browser)}</span>` : "",
+            entry.legacy ? `<span class="badge blocked">unsupported legacy</span>` : "",
+            entry.status === "tricky" ? `<span class="badge slow">slow · experimental</span>` : "",
         ].filter(Boolean).join("");
-        const size = entry.bundled ? fmtBytes(entry.sizeBytes) : `≈ ${fmtBytes(entry.sizeBytes)} ISO`;
+        const size = entry.filesystem ? `${fmtBytes(entry.sizeBytes)} on demand` : entry.bundled ? fmtBytes(entry.sizeBytes) : `≈ ${fmtBytes(entry.sizeBytes)} ISO`;
         return `
         <button class="os-card" data-os="${entry.id}" type="button">
             <span class="os-card-head">
@@ -173,10 +199,10 @@ function buildBlockedList() {
 
 function selectOs(id, { silent = false } = {}) {
     const entry = getEntry(id);
-    if (!entry) return;
-
+    if (!entry || engine.isAttached || state.busy || state.sourceBusy) return;
+    const previousId = state.selectedId;
     state.selectedId = id;
-    localStorage.setItem("browser-vm.last-os", id);
+    storeString("browser-vm.last-os", id);
 
     $$(".os-card").forEach((card) => {
         card.classList.toggle("is-selected", card.dataset.os === id);
@@ -187,7 +213,7 @@ function selectOs(id, { silent = false } = {}) {
     if (!silent || !state.machine.tunedFor || state.machine.tunedFor !== id) {
         state.machine.memoryMB = entry.ramMB ?? state.machine.memoryMB;
         state.machine.vgaMB = entry.vgaMB ?? state.machine.vgaMB;
-        state.machine.nicType = entry.status === "instant" && entry.family === "DOS" ? "ne2k" : state.machine.nicType;
+        state.machine.nicType = entry.nicType || (entry.status === "instant" && entry.family === "DOS" ? "ne2k" : state.machine.nicType);
         state.machine.tunedFor = id;
         applyMachineToForm();
     }
@@ -196,11 +222,9 @@ function selectOs(id, { silent = false } = {}) {
         state.source = bundledSource(entry);
         setSourceTab("builtin");
         state.sourceTab = "builtin";
-    } else if (state.source?.bundledPath) {
-        // A built-in image no longer matches the chosen OS.
+    } else if (previousId !== id || state.source?.bundledPath) {
         state.source = null;
-        setSourceTab("file");
-        state.sourceTab = "file";
+        setSourceTab("url");
     }
 
     renderSelection();
@@ -223,7 +247,7 @@ function renderSelection() {
     const links = $("#chosen-links");
     if (entry.links?.length) {
         links.innerHTML = `
-            <p class="hint">Get the ISO (opens in a new tab; then open it with “From disk”):</p>
+            <p class="hint">Stream a direct URL, or download an ISO only if you have the space:</p>
             ${linkRowHtml(entry)}`;
         links.hidden = false;
     } else {
@@ -256,17 +280,15 @@ function renderDownloadBox(entry) {
     if (entry.bundled) {
         box.className = "os-download is-ready";
         box.innerHTML = `
-            <p class="os-download-title"><strong>${escapeHtml(entry.name)}</strong> ships with this page — nothing to download.</p>
-            <p class="hint">Its image is already selected in step 2. Press <strong>Boot</strong> whenever you like.</p>`;
+            <p class="os-download-title"><strong>${escapeHtml(entry.name)}</strong> ships with this page — no ISO to save.</p>
+            <p class="hint">${entry.filesystem ? "The Linux kernel, desktop and Dillo are included. Files load from this site as needed; guest changes stay in RAM. Internet requires an optional relay." : "Its small image is already selected in step 2."} Press <strong>Boot</strong> whenever you like.</p>`;
     } else if (entry.links?.length) {
         box.className = "os-download is-download";
         box.innerHTML = `
-            <p class="os-download-title">Download the ISO for <strong>${escapeHtml(entry.name)} ${escapeHtml(entry.version)}</strong></p>
-            ${linkRowHtml(entry)}
-            <p class="hint">
-                Save the file anywhere on this computer, then attach it in step 2
-                (<em>From disk</em>). Your browser reads it locally — nothing is uploaded.
-            </p>`;
+            <p class="os-download-title"><strong>${escapeHtml(entry.name)} ${escapeHtml(entry.version)}</strong></p>
+            ${entry.links.some((link) => link.kind === "direct") ? `<button class="btn primary" data-stream-os="${entry.id}" type="button">${entry.id === "mint-19.3-xfce-32" ? "Explore Mint streaming…" : "Stream & boot (no ISO to save)"}</button>` : ""}
+            <p class="hint">Streaming needs verified byte ranges. If unavailable, it stops rather than saving a large ISO. Manual download links are below; local files are never uploaded.</p>
+            ${linkRowHtml(entry)}`;
     } else {
         box.className = "os-download";
         box.innerHTML = `
@@ -322,15 +344,25 @@ function buildDiskPanel() {
         if (file) useLocalFile(file);
     });
 
-    // URL source
+    // URL source. This preference is independent from local-file RAM handling.
+    $("#stream-only").addEventListener("change", () => {
+        state.ui.streamOnly = $("#stream-only").checked;
+        storeJson(UI_KEY, state.ui);
+        if (state.source?.kind === "url") state.source.streamOnly = state.ui.streamOnly;
+        renderDiskPanel();
+    });
+    document.addEventListener("click", (event) => {
+        const button = event.target.closest?.("[data-stream-os]");
+        if (!button || button.disabled) return;
+        if (button.dataset.streamOs === "mint-19.3-xfce-32") openMintDialog();
+        else streamCatalogImage(button.dataset.streamOs);
+    });
     $("#url-use").addEventListener("click", () => useRemoteUrl());
     $("#url-check").addEventListener("click", () => checkUrl());
     $("#url-input").addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
             event.preventDefault();
-            checkUrl().then(() => {
-                if (state.source?.kind === "url") setSourceTab("file", { keepSource: true });
-            });
+            useRemoteUrl();
         }
     });
 }
@@ -365,6 +397,7 @@ function useLocalFile(file) {
 }
 
 async function checkUrl() {
+    if (state.sourceBusy || state.busy || engine.isAttached) return null;
     const input = /** @type {HTMLInputElement} */ ($("#url-input"));
     const url = input.value.trim();
     const result = $("#url-result");
@@ -374,7 +407,11 @@ async function checkUrl() {
     }
 
     result.innerHTML = `<p class="probe">Checking ${escapeHtml(shortenUrl(url))} …</p>`;
-    const probe = await probeUrl(url);
+    state.sourceBusy = true;
+    refreshControls();
+    let probe;
+    try { probe = await probeUrl(url); }
+    finally { state.sourceBusy = false; refreshControls(); }
 
     if (!probe.ok) {
         result.innerHTML = `
@@ -390,16 +427,22 @@ async function checkUrl() {
     if (probe.contentType) notes.push(`Type: ${escapeHtml(probe.contentType)}`);
     probe.notes.forEach((note) => notes.push(escapeHtml(note)));
 
-    result.innerHTML = `<p class="probe ok">Reachable.</p><ul class="probe-list">${notes.map((n) => `<li>${n}</li>`).join("")}</ul>`;
+    result.innerHTML = `<p class="probe ${canStream(probe) ? "ok" : "bad"}">${canStream(probe) ? "Streaming verified — no ISO file to save." : "Reachable, but streaming was not verified."}</p><ul class="probe-list">${notes.map((n) => `<li>${n}</li>`).join("")}</ul>`;
     state.probe = { url, ...probe };
     return probe;
 }
 
 async function useRemoteUrl() {
+    if (state.busy || state.sourceBusy || engine.isAttached) return;
+    const url = $("#url-input").value.trim();
     const probe = state.probe?.url === /** @type {HTMLInputElement} */ ($("#url-input")).value.trim()
         ? state.probe
-        : await checkUrl();
+        : { url, ...await checkUrl() };
     if (!probe?.ok) return;
+    if (state.ui.streamOnly && !canStream(probe)) {
+        $("#url-result").insertAdjacentHTML("beforeend", `<p class="probe bad">Streaming-only mode refused this image. Nothing was downloaded. Use another host or the server relay.</p>`);
+        return;
+    }
 
     state.source = {
         kind: "url",
@@ -407,6 +450,7 @@ async function useRemoteUrl() {
         label: fileNameFromUrl(probe.url),
         sizeBytes: probe.size || 0,
         acceptRanges: probe.acceptRanges,
+        streamOnly: state.ui.streamOnly !== false,
         device: "cdrom",
     };
     renderDiskPanel();
@@ -430,6 +474,7 @@ function renderDiskPanel() {
         card.classList.toggle("is-selected", card.dataset.builtin === state.selectedId);
     });
     updateStartHint();
+    updateComputerDetails();
 }
 
 /* ------------------------------------------------------------------ *
@@ -474,7 +519,10 @@ function buildMachinePanel() {
 
     bindHardDiskControls();
 
-    $("#net-select").addEventListener("change", updateRelayVisibility);
+    $("#net-select").addEventListener("change", () => {
+        $("#quick-linux-internet").checked = state.machine.netBackend === "widgetry";
+        updateRelayVisibility();
+    });
     $("#reset-machine").addEventListener("click", () => {
         const entry = getEntry(state.selectedId);
         state.machine = {
@@ -538,9 +586,22 @@ function bindHardDiskControls() {
 }
 
 function persistableDefaultsFix() {
-    // Settings saved by an older version may miss newer keys.
-    const merged = { ...defaults(), ...readStoredJson(SETTINGS_KEY, {}) };
+    // Old/corrupt preferences and storage-denied contexts must not block boot.
+    const fallback = defaults();
+    const merged = { ...fallback, ...readStoredJson(SETTINGS_KEY, {}) };
+    if (!VmEngine.memoryChoices().includes(merged.memoryMB)) merged.memoryMB = fallback.memoryMB;
+    if (!VmEngine.vgaChoices().includes(merged.vgaMB)) merged.vgaMB = fallback.vgaMB;
+    for (const [key, choices] of Object.entries({
+        bootOrder: BOOT_ORDERS.map((item) => item.id), nicType: NIC_TYPES.map((item) => item.id),
+        netBackend: NET_BACKENDS.map((item) => item.id), diskMode: ["auto", "ram", "stream"],
+    })) { if (!choices.includes(merged[key])) merged[key] = fallback[key]; }
+    for (const key of ["acpi", "sound", "disableJit", "instantBoot"]) {
+        if (typeof merged[key] !== "boolean") merged[key] = fallback[key];
+    }
+    if (typeof merged.customRelayUrl !== "string") merged.customRelayUrl = "";
     state.machine = merged;
+    state.ui.desktopMode = state.ui.desktopMode === true;
+    state.ui.streamOnly = state.ui.streamOnly !== false;
 }
 
 function applyMachineToForm() {
@@ -556,6 +617,7 @@ function applyMachineToForm() {
     /** @type {HTMLInputElement} */ ($("#toggle-safe")).checked = Boolean(machine.disableJit);
     /** @type {HTMLInputElement} */ ($("#toggle-quickboot")).checked = machine.instantBoot !== false;
     /** @type {HTMLSelectElement} */ ($("#disk-mode")).value = machine.diskMode || "auto";
+    $("#quick-linux-internet").checked = machine.netBackend === "widgetry";
     updateRelayVisibility();
     renderMachineSummary();
 }
@@ -584,31 +646,26 @@ function renderMachineSummary() {
 
 function bindScreenInteractions() {
     const viewport = $("#screen-viewport");
-
-    // Keyboard events are global in v86, so only enable them while the pointer
-    // is over the screen; that keeps the page's own inputs usable.
-    viewport.addEventListener("pointerenter", () => {
-        if (!engine.isAttached) return;
-        engine.setKeyboardEnabled(true);
-        engine.setMouseEnabled(true);
-        viewport.classList.add("is-capturing");
+    screenInput = new ScreenInput({
+        engine, viewport, document, window,
+        onChange: ({ captured, locked }) => {
+            document.body.dataset.input = captured ? "captured" : "released";
+            $("#input-status").textContent = locked ? "Mouse captured · Esc to release" : captured ? "Keyboard & mouse connected" : "Controls released";
+            $("#btn-release-input").disabled = !captured;
+            $("#input-tip").hidden = !engine.isRunning || captured;
+        },
+        onFullscreen: toggleFullscreen,
     });
-    viewport.addEventListener("pointerleave", () => {
-        engine.setKeyboardEnabled(false);
-        engine.setMouseEnabled(false);
-        engine.releaseModifiers();
-        viewport.classList.remove("is-capturing");
+    $("#btn-grab-mouse").addEventListener("click", async () => {
+        try { await screenInput.grabMouse(); } catch (error) { log(`Mouse capture unavailable: ${describeError(error)}. Click the display to keep using the guest.`, "warn"); }
     });
-    viewport.addEventListener("click", () => {
-        // A click locks the pointer so relative mice (X11 console, DOS games) work.
-        if (engine.isAttached && engine.isRunning) engine.lockMouse();
+    $("#btn-release-input").addEventListener("click", () => screenInput.release());
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(scheduleFit).observe(viewport);
+    window.addEventListener("resize", scheduleFit);
+    document.addEventListener("fullscreenchange", () => {
+        $("#btn-fullscreen").textContent = document.fullscreenElement ? "Exit fullscreen ↙" : "Fullscreen ↗";
+        scheduleFit();
     });
-
-    if (typeof ResizeObserver !== "undefined") {
-        new ResizeObserver(() => scheduleFit()).observe(viewport);
-    }
-    window.addEventListener("resize", () => scheduleFit());
-    document.addEventListener("fullscreenchange", () => scheduleFit());
 }
 
 function bindToolbar() {
@@ -620,7 +677,11 @@ function bindToolbar() {
             await engine.run();
         }
     });
-    $("#btn-reset").addEventListener("click", () => engine.reset());
+    $("#btn-reset").addEventListener("click", async () => {
+        if (!confirm("Restart this computer? Unsaved work in the guest may be lost.")) return;
+        screenInput.release();
+        try { await engine.reset(); } catch (error) { showError(describeError(error)); }
+    });
     $("#btn-power").addEventListener("click", () => powerOff());
     $("#btn-fullscreen").addEventListener("click", () => toggleFullscreen());
     $("#btn-fit").addEventListener("click", () => {
@@ -640,7 +701,7 @@ function bindToolbar() {
             const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
             downloadBlob(blob, `vm-screenshot-${stamp}.png`);
             log("Screenshot saved to your downloads folder.", "ok");
-        });
+        }).catch((error) => log(`Screenshot could not be downloaded: ${describeError(error)}`, "warn"));
     });
     $("#btn-cad").addEventListener("click", () => engine.sendCtrlAltDel());
     $("#btn-state-save").addEventListener("click", () => saveState());
@@ -651,36 +712,46 @@ function bindToolbar() {
         if (file) loadState(file);
         input.value = "";
     });
-    $("#btn-type").addEventListener("click", () => {
-        const box = $("#type-box");
-        box.hidden = !box.hidden;
-        if (!box.hidden) /** @type {HTMLInputElement} */ ($("#type-input")).focus();
+    $("#btn-type").addEventListener("click", () => openTypeBox());
+    $("#btn-paste").addEventListener("click", async () => {
+        openTypeBox();
+        try {
+            const text = await navigator.clipboard.readText();
+            $("#type-input").value = text;
+        } catch {
+            log("Clipboard access was denied. Paste into the text box manually, then press Send text.", "warn");
+        }
+        $("#type-input").focus();
     });
-    $("#type-send").addEventListener("click", () => {
-        const input = /** @type {HTMLInputElement} */ ($("#type-input"));
-        engine.sendText(input.value);
-        input.value = "";
+    $("#type-close").addEventListener("click", () => { $("#type-box").hidden = true; $("#screen-viewport").focus(); });
+    $("#type-send").addEventListener("click", async () => {
+        if (state.sessionBusy || state.busy || !engine.isRunning) return;
+        const input = $("#type-input");
+        state.sessionBusy = true;
+        screenInput.release();
+        refreshControls();
+        let sent = false;
+        try {
+            await engine.sendText(input.value);
+            input.value = "";
+            $("#type-box").hidden = true;
+            sent = true;
+        } catch (error) { sessionFeedback(`Text was not fully sent: ${describeError(error)}`, true); }
+        finally { state.sessionBusy = false; refreshControls(); }
+        if (sent) $("#screen-viewport").focus();
     });
     $("#type-input").addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            $("#type-send").click();
-        }
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { event.preventDefault(); $("#type-send").click(); }
     });
+    $("#error-dismiss").addEventListener("click", () => { $("#error-box").hidden = true; });
     $("#btn-clear-log").addEventListener("click", () => { $("#log-body").innerHTML = ""; });
 }
 
-function bindKeyboardShortcuts() {
-    document.addEventListener("keydown", (event) => {
-        const target = /** @type {HTMLElement} */ (event.target);
-        const typing = target && (target.nodeName === "INPUT" || target.nodeName === "TEXTAREA" || target.nodeName === "SELECT");
-        if (typing) return;
-        if (event.key === "F11" && engine.v86) return; // let the browser handle it
-        if (event.ctrlKey && event.altKey && (event.key === "Delete" || event.key === "Backspace")) {
-            event.preventDefault();
-            engine.sendCtrlAltDel();
-        }
-    });
+function openTypeBox() {
+    $("#tools-menu").open = false;
+    screenInput.release();
+    $("#type-box").hidden = false;
+    $("#type-input").focus();
 }
 
 function zoomBy(factor) {
@@ -733,12 +804,12 @@ function applyZoom(width, height) {
 
 /** Fullscreen the whole screen area (not the whole page). */
 async function toggleFullscreen() {
-    const viewport = $("#screen-viewport");
+    const shell = $("#screen-shell");
     try {
         if (document.fullscreenElement) {
             await document.exitFullscreen();
         } else {
-            await viewport.requestFullscreen();
+            await shell.requestFullscreen();
         }
     } catch (error) {
         log(`Fullscreen was refused: ${describeError(error)}`, "warn");
@@ -761,13 +832,13 @@ function visibleScreenChild() {
 function updateStartHint() {
     const button = /** @type {HTMLButtonElement} */ ($("#btn-start"));
     const entry = getEntry(state.selectedId);
-    const ready = Boolean(state.source) && !state.busy;
+    const ready = Boolean(state.source) && !state.busy && !state.sourceBusy && !state.sessionBusy && !engine.isAttached;
     button.disabled = !ready;
     $("#start-hint").textContent = !state.source
         ? "Step 2: choose a disk image"
         : state.busy
             ? "Working…"
-            : `Boot ${entry ? `${entry.name} ${entry.version}` : "the virtual machine"}`;
+            : `Boot ${entry ? entry.name : "computer"}`;
 
     // Point at step 2 while there is still nothing to boot from.
     const diskTab = /** @type {HTMLElement|null} */ (document.querySelector('[data-tab="disk"]'));
@@ -780,8 +851,8 @@ function relayUrlFor(backendId, customUrl) {
     return NET_BACKENDS.find((net) => net.id === backendId)?.relayUrl || null;
 }
 
-async function bootMachine() {
-    if (state.busy) return;
+async function bootMachine({ desktop = false, restoreBuffer = null } = {}) {
+    if (state.busy || state.sourceBusy || engine.isAttached) return;
     const entry = getEntry(state.selectedId);
     if (!state.source) {
         showError("Choose a disk image first.");
@@ -790,10 +861,21 @@ async function bootMachine() {
 
     state.busy = true;
     state.bootStartedAt = performance.now();
-    updateStartHint();
+    state.active = { osId: state.selectedId, source: { ...state.source }, machine: { ...state.machine }, diskMode: state.disk.mode };
+    if (desktop) setDesktopMode(true);
+    $("#error-box").hidden = true;
+    $("#session-feedback").hidden = true;
+    $("#boot-title").textContent = `${restoreBuffer ? "Restoring" : "Starting"} ${entry?.name || "your computer"}…`;
+    $("#boot-description").textContent = state.source.kind === "filesystem"
+        ? "Linux and Dillo load their files on demand. The local browser welcome page opens after the desktop starts."
+        : state.source.kind === "url"
+        ? "The image is streamed from its host. Your browser runs the virtual CPU and RAM."
+        : "Loading the virtual hardware. The desktop will appear here.";
+    setStatus("loading");
+    refreshControls();
     setProgress(0, 1, "Preparing…");
 
-    const machine = state.machine;
+    const machine = { ...state.machine };
     let bootOrder = BOOT_ORDERS.find((order) => order.id === machine.bootOrder)?.value ?? 0;
     if (bootOrder === 0 && state.disk.mode !== "none") {
         // With a disk attached, prefer the removable media so "boot the ISO,
@@ -804,8 +886,9 @@ async function bootMachine() {
 
     try {
         log(`Booting ${entry ? `${entry.name} ${entry.version}` : "image"} as ${state.source.device}…`);
-        const { image, strategy } = await resolveImage(state.source, {
-            mode: machine.diskMode,
+        const { image, filesystem, cmdline, strategy } = await resolveImage(state.source, {
+            mode: state.source.kind === "url" ? "auto" : machine.diskMode,
+            streamOnly: state.source.kind === "url" && (state.source.streamOnly || state.ui.streamOnly),
             onProgress: (loaded, total, label) => {
                 setProgress(loaded, total, `Loading ${label || "disk image"}…`);
             },
@@ -832,7 +915,7 @@ async function bootMachine() {
         $("#image-strategy").textContent = strategy;
 
         await engine.boot({
-            image,
+            image, filesystem, cmdline,
             device: state.source.device,
             memoryMB: machine.memoryMB,
             vgaMB: machine.vgaMB,
@@ -844,23 +927,36 @@ async function bootMachine() {
             disableJit: machine.disableJit,
             instantBoot: machine.instantBoot,
             hardDisk,
-            autostart: true,
+            autostart: !restoreBuffer,
         });
+        if (restoreBuffer) { await engine.restoreState(restoreBuffer); await engine.run(); }
         log(`Disk image: ${strategy}.`);
         if (relayUrl) log(`Network backend: ${relayUrl}`);
     } catch (error) {
+        if (engine.isAttached) await engine.destroy();
+        state.active = null;
         showError(describeError(error));
         setStatus("error");
+        setProgress(0, 0, "");
     } finally {
         state.busy = false;
-        updateStartHint();
+        refreshControls();
+        updateComputerDetails();
     }
 }
 
 async function powerOff() {
-    if (!engine.isAttached) return;
+    if (!engine.isAttached || state.busy || state.sessionBusy) return;
+    if (!confirm("Power off this computer? Unsaved guest work will be lost. Any explicitly saved browser session stays available.")) return;
+    screenInput.release();
     await engine.destroy();
-    log("Virtual machine powered off.", "ok");
+    state.active = null;
+    state.disk.buffer = null;
+    $("#disk-download").disabled = true;
+    $("#type-box").hidden = true;
+    refreshControls();
+    updateComputerDetails();
+    log("Virtual machine powered off. No automatic local save was made.", "ok");
 }
 
 async function saveState() {
@@ -868,13 +964,18 @@ async function saveState() {
         log("Start the machine before saving its state.", "warn");
         return;
     }
+    if (state.sessionBusy || state.busy) return;
+    state.sessionBusy = true;
+    $("#tools-menu").open = false;
+    screenInput.release();
+    refreshControls();
     try {
         const state_ = await engine.saveState();
         downloadBlob(new Blob([state_], { type: "application/octet-stream" }), "v86-state.bin");
         log(`State downloaded (${fmtBytes(state_.byteLength)}). Load it later from the same machine settings.`, "ok");
     } catch (error) {
         log(`Saving state failed: ${describeError(error)}`, "error");
-    }
+    } finally { state.sessionBusy = false; refreshControls(); }
 }
 
 async function loadState(file) {
@@ -882,12 +983,20 @@ async function loadState(file) {
         log("Boot the machine first, then load a state file into it.", "warn");
         return;
     }
+    if (state.sessionBusy || state.busy) return;
+    state.sessionBusy = true;
+    screenInput.release();
+    refreshControls();
     try {
         const buffer = await file.arrayBuffer();
         await engine.restoreState(buffer);
+        // v86 restores disk internals; the old application-side ArrayBuffer is
+        // no longer an authoritative export of a restored installation.
+        state.disk.buffer = null;
+        $("#disk-download").disabled = true;
     } catch (error) {
         log(`Restoring state failed: ${describeError(error)}`, "error");
-    }
+    } finally { state.sessionBusy = false; refreshControls(); }
 }
 
 /* ------------------------------------------------------------------ *
@@ -896,52 +1005,69 @@ async function loadState(file) {
 
 function setStatus(status) {
     const pill = $("#status-pill");
-    const labels = {
-        idle: "Idle", loading: "Loading…", ready: "Booting…", running: "Running",
-        paused: "Paused", error: "Error", stopped: "Stopped",
-    };
+    const labels = { idle: "Ready", loading: "Starting…", ready: "Booting…", running: "Running", paused: "Paused", error: "Error", stopped: "Stopped" };
     pill.textContent = labels[status] || status;
     pill.className = `pill status-${status}`;
     document.body.dataset.vmstate = status;
-
-    const startButton = /** @type {HTMLButtonElement} */ ($("#btn-start"));
-    startButton.hidden = status === "running" || status === "paused";
-
-    const overlay = $("#screen-overlay");
-    overlay.hidden = status === "running" || status === "paused";
-    if (status === "paused") $("#paused-banner").hidden = false;
-    else $("#paused-banner").hidden = true;
+    const loading = status === "loading" || status === "ready";
+    $("#btn-start").hidden = loading || status === "running" || status === "paused";
+    $("#screen-overlay").hidden = status === "running" || status === "paused";
+    $("#welcome-card").hidden = loading;
+    $("#boot-card").hidden = !loading;
+    $("#paused-banner").hidden = status !== "paused";
+    $("#input-tip").hidden = status !== "running" || Boolean(screenInput?.captured);
+    updateComputerDetails();
 }
 
 function handleEngineState(status, detail) {
     state.lastState = status;
     setStatus(status === "stopped" ? "paused" : status);
-    const running = status === "running" || status === "ready" || status === "loading";
-
-    $("#btn-pause").disabled = !engine.isAttached;
-    $("#btn-pause").textContent = engine.isRunning ? "Pause" : "Resume";
-    $("#btn-reset").disabled = !engine.isAttached;
-    $("#btn-power").disabled = !engine.isAttached;
-    ["#btn-screenshot", "#btn-cad", "#btn-state-save", "#btn-type"].forEach((selector) => {
-        /** @type {HTMLButtonElement} */ ($(selector)).disabled = !engine.isAttached;
-    });
-
+    if (status !== "running") screenInput?.release();
+    refreshControls();
     if (status === "running") {
-        setProgress(1, 1, "Running");
-        $("#screen-overlay").hidden = true;
+        setProgress(1, 1, "");
         startMetricTicker();
-    } else {
-        stopMetricTicker();
-    }
-    if (status === "error") {
-        setProgress(0, 0, "Error");
-        if (detail?.message) showError(detail.message);
-    }
+    } else stopMetricTicker();
+    if (status === "error" && detail?.message) showError(detail.message);
     if (status === "idle") {
         $("#image-strategy").textContent = "—";
-        $("#screen-overlay").hidden = false;
+        $("#mips").textContent = "— MIPS";
+        $("#uptime").textContent = "—";
+        $("#instructions").textContent = "—";
     }
-    if (running) scheduleFit();
+    scheduleFit();
+}
+
+function refreshControls() {
+    const busy = state.busy || state.sourceBusy || state.sessionBusy;
+    const usable = engine.isAttached && ["running", "paused"].includes(engine.state) && !busy;
+    ["#btn-pause", "#btn-reset", "#btn-power", "#btn-screenshot", "#btn-cad", "#btn-state-save", "#btn-state-load", "#btn-type", "#btn-paste"].forEach((selector) => { $(selector).disabled = !usable; });
+    $("#btn-pause").textContent = engine.isRunning ? "Pause" : "Resume";
+    $("#btn-grab-mouse").disabled = !engine.isRunning || busy;
+    $("#btn-session-save").disabled = !usable || !sessionStore.supported || !canRememberSession(state.active);
+    $("#btn-session-save").title = state.active?.source.kind === "filesystem" ? "This demand-loaded filesystem does not yet support browser-session saves; changes are temporary." : "Explicitly save this session in this browser";
+    $$(".sidebar button, .sidebar input, .sidebar select").forEach((control) => { control.disabled = engine.isAttached || busy; });
+    $$("[data-tab]").forEach((button) => { button.disabled = busy; });
+    $("#disk-download").disabled = busy || !state.disk.buffer;
+    $("#setup-lock-note").hidden = !engine.isAttached;
+    $$("[data-quick-launch]").forEach((button) => { button.disabled = engine.isAttached || busy; });
+    $("#quick-mint").disabled = engine.isAttached || busy;
+    $("#quick-linux-internet").disabled = engine.isAttached || busy;
+    $("#btn-session-resume").disabled = engine.isAttached || busy;
+    $("#btn-session-delete").disabled = busy;
+    $("#type-send").disabled = !engine.isRunning || busy;
+    $("#type-close").disabled = busy;
+    $("#type-input").disabled = busy;
+    $("#btn-type").disabled = !engine.isRunning || busy;
+    $("#btn-paste").disabled = !engine.isRunning || busy;
+    updateStartHint();
+}
+
+function updateComputerDetails() {
+    const entry = getEntry(state.active?.osId || state.selectedId);
+    $("#computer-detail").textContent = entry ? `${entry.name} · ${entry.desktop} · ${state.active?.machine.memoryMB || state.machine.memoryMB} MB RAM` : "Ready when you are";
+    const source = state.active?.source || state.source;
+    $("#source-badge").textContent = source?.kind === "filesystem" ? "On-demand Linux files · no ISO" : source?.kind === "url" ? "Streamed image · no ISO to save" : source?.kind === "file" ? "Local image · never uploaded" : "Small built-in image";
 }
 
 function setProgress(loaded, total, label) {
@@ -960,7 +1086,7 @@ function handleProgress(info) {
     const label = info.fileName ? `Loading ${fileNameFromUrl(info.fileName) || info.fileName}` : "Loading disk image";
     setProgress(info.loaded, info.total, `${label}…`);
     if (info.lengthComputable && info.total > 0 && info.loaded >= info.total) {
-        setTimeout(() => setProgress(1, 1, "Booting…"), 400);
+        setTimeout(() => { if (["loading", "ready"].includes(engine.state)) setProgress(1, 1, "Booting…"); }, 400);
     }
 }
 
@@ -1000,7 +1126,7 @@ function startMetricTicker() {
         const now = performance.now();
         const seconds = (now - lastSample) / 1000;
         if (seconds > 0.4) {
-            const mips = (counter - lastCounter) / seconds / 1e6;
+            const mips = ((counter - lastCounter) >>> 0) / seconds / 1e6;
             $("#mips").textContent = `≈ ${mips.toFixed(0)} MIPS`;
             $("#instructions").textContent = `${fmtNumber(counter)} instructions`;
             $("#uptime").textContent = fmtDuration(engine.uptimeMs() / 1000);
@@ -1025,13 +1151,233 @@ function updateFooterInfo() {
     $$("[data-repo-link]").forEach((element) => {
         element.setAttribute("href", element.dataset.repoPath ? `${REPO_URL}/blob/main/${element.dataset.repoPath}` : REPO_URL);
     });
-    const version = $("#v86-version");
-    fetch("assets/v86/VERSION")
-        .then((response) => (response.ok ? response.text() : ""))
-        .then((text) => {
-            if (text.trim()) version.textContent = `v86 ${text.trim()}`;
-        })
-        .catch(() => {});
+    loadCoreVersion().then((text) => { $("#v86-version").textContent = `v86 ${text}`; }).catch(() => {});
+}
+
+/* ------------------------------------------------------------------ *
+ * Desktop mode, diskless launch, explicit session persistence
+ * ------------------------------------------------------------------ */
+
+function setDesktopMode(enabled, { persist = true } = {}) {
+    state.ui.desktopMode = enabled;
+    document.body.classList.toggle("desktop-mode", enabled);
+    $("#btn-desktop").textContent = enabled ? "Show setup" : "Desktop mode";
+    $("#btn-desktop").setAttribute("aria-pressed", String(enabled));
+    if (persist) storeJson(UI_KEY, state.ui);
+    scheduleFit();
+}
+
+function bindDesktopControls() {
+    $("#btn-desktop").addEventListener("click", () => setDesktopMode(!state.ui.desktopMode));
+    $("#quick-linux-internet").addEventListener("change", () => {
+        state.machine.netBackend = $("#quick-linux-internet").checked ? "widgetry" : "none";
+        applyMachineToForm();
+        storeJson(SETTINGS_KEY, state.machine);
+        log(state.machine.netBackend === "widgetry" ? "Public relay selected explicitly. This third-party service is not guaranteed; avoid private data." : "Guest internet disabled.");
+    });
+    $$("[data-quick-launch]").forEach((button) => button.addEventListener("click", () => {
+        if (state.busy || state.sourceBusy || state.sessionBusy || engine.isAttached) return;
+        selectOs(button.dataset.quickLaunch);
+        state.disk = { mode: "none", sizeMB: 512, file: null, buffer: null };
+        $("#disk-select").value = "none";
+        $("#disk-select").dispatchEvent(new Event("change"));
+        bootMachine({ desktop: true });
+    }));
+    window.addEventListener("beforeunload", (event) => {
+        if (!engine.isAttached) return;
+        event.preventDefault();
+        event.returnValue = "";
+    });
+}
+
+function bindDialogs() {
+    $("#btn-storage-help").addEventListener("click", () => { screenInput.release(); $("#storage-dialog").showModal(); });
+    $("#storage-close").addEventListener("click", () => $("#storage-dialog").close());
+    $("#storage-explore-mint").addEventListener("click", () => { $("#storage-dialog").close(); openMintDialog(); });
+    $("#quick-mint").addEventListener("click", openMintDialog);
+    const closeMint = () => { streamController?.abort(); $("#mint-dialog").close(); };
+    $("#mint-close").addEventListener("click", closeMint);
+    $("#mint-cancel").addEventListener("click", closeMint);
+    $("#mint-dialog").addEventListener("cancel", () => streamController?.abort());
+    $("#mint-ack").addEventListener("change", () => { $("#mint-stream").disabled = !$("#mint-ack").checked || state.sourceBusy; });
+    $("#mint-stream").addEventListener("click", () => {
+        if ($("#mint-ack").checked) streamCatalogImage("mint-19.3-xfce-32");
+    });
+}
+
+function openMintDialog() {
+    if (engine.isAttached || state.busy || state.sessionBusy || state.sourceBusy) {
+        log("Power off the current guest before choosing a Mint image.", "warn");
+        return;
+    }
+    $("#mint-ack").checked = false;
+    $("#mint-stream").disabled = true;
+    $("#mint-stream-status").textContent = "";
+    $("#mint-stream-status").classList.remove("is-error");
+    $("#mint-dialog").showModal();
+}
+
+async function streamCatalogImage(id) {
+    if (state.busy || state.sourceBusy || state.sessionBusy || engine.isAttached) return;
+    const entry = getEntry(id);
+    const direct = entry?.links.filter((link) => link.kind === "direct").map((link) => link.url) || [];
+    if (!direct.length) return;
+    const isMint = id === "mint-19.3-xfce-32";
+    const candidates = isMint ? [`api/images/${id}.iso`, ...direct] : direct;
+    const controller = new AbortController();
+    streamController = controller;
+    state.sourceBusy = true;
+    refreshControls();
+    $("#mint-stream").disabled = true;
+    $("#mint-ack").disabled = true;
+    $("#mint-stream-status").classList.remove("is-error");
+    let found = null;
+    try {
+        for (const [index, url] of candidates.entries()) {
+            if (controller.signal.aborted) return;
+            const label = url.startsWith("api/") ? "the server image relay" : `mirror ${isMint ? index : index + 1}`;
+            if (isMint) $("#mint-stream-status").textContent = `Checking ${label}… You can cancel. No ISO file is being saved.`;
+            log(`Checking ${entry.name}: ${label}.`);
+            const probe = await probeUrl(url, { signal: controller.signal });
+            if (controller.signal.aborted) return;
+            if (probe.ok && canStream(probe)) { found = { url, ...probe }; break; }
+            log(`Streaming unavailable from ${label}: ${probe.error || "Byte ranges or image size were not verified."}`, "warn");
+        }
+        if (!found) {
+            const message = "No accessible streaming source was found. This host may be unable to reach Mint mirrors, or they may block CORS. " +
+                "No full ISO was downloaded. Configure the Node host’s MINT_ISO_URL, supply a CORS + Range-enabled URL, or use the instant desktop. Current Mint requires a separate remote 64-bit VM.";
+            if (isMint) {
+                $("#mint-stream-status").textContent = message;
+                $("#mint-stream-status").classList.add("is-error");
+            } else showError(message);
+            return;
+        }
+        state.sourceBusy = false;
+        selectOs(id);
+        state.ui.streamOnly = true;
+        storeJson(UI_KEY, state.ui);
+        $("#stream-only").checked = true;
+        state.source = {
+            kind: "url", url: found.url, label: fileNameFromUrl(found.url),
+            sizeBytes: found.size, acceptRanges: true, streamOnly: true, device: entry.device,
+        };
+        state.probe = found;
+        $("#url-input").value = found.url;
+        $("#url-result").innerHTML = `<p class="probe ok">Streaming verified. The ISO stays on its host.</p>`;
+        setSourceTab("url");
+        state.disk = { mode: "none", sizeMB: 512, file: null, buffer: null };
+        $("#disk-select").value = "none";
+        $("#disk-select").dispatchEvent(new Event("change"));
+        renderDiskPanel();
+        if (isMint) $("#mint-dialog").close();
+        log(`Streaming ready: ${entry.name} (${fmtBytes(found.size)} ISO; not saved locally).`, "ok");
+        await bootMachine({ desktop: true });
+    } catch (error) {
+        if (!controller.signal.aborted) {
+            if (isMint) { $("#mint-stream-status").textContent = describeError(error); $("#mint-stream-status").classList.add("is-error"); }
+            else showError(describeError(error));
+        }
+    } finally {
+        state.sourceBusy = false;
+        streamController = null;
+        $("#mint-ack").disabled = false;
+        $("#mint-stream").disabled = !$("#mint-ack").checked;
+        refreshControls();
+    }
+}
+
+function loadCoreVersion() {
+    if (!versionPromise) {
+        versionPromise = fetch("assets/v86/VERSION", { cache: "no-store" })
+            .then(async (response) => {
+                if (!response.ok) throw new Error("Could not verify the emulator version for a saved session.");
+                const text = (await response.text()).trim();
+                if (!/^\d+(?:\.\d+)+$/.test(text)) throw new Error("The emulator version file is invalid.");
+                state.coreVersion = text;
+                return text;
+            }).catch((error) => { versionPromise = null; throw error; });
+    }
+    return versionPromise;
+}
+
+async function refreshSavedSession() {
+    try { state.sessionSummary = sessionStore.supported ? await sessionStore.summary() : null; }
+    catch (error) { state.sessionSummary = null; log(`Browser resume unavailable: ${describeError(error)}. You can still run without saving.`, "warn"); }
+    const summary = state.sessionSummary;
+    $("#saved-session").hidden = !summary;
+    if (summary) {
+        const entry = getEntry(summary.osId);
+        $("#session-name").textContent = entry?.name || "Saved computer";
+        $("#session-summary").textContent = `${fmtBytes(summary.bytes)} stored on this device · ${new Date(summary.createdAt).toLocaleString()}`;
+    }
+}
+
+function sessionFeedback(message, error = false) {
+    $("#session-feedback").hidden = false;
+    $("#session-feedback").textContent = message;
+    $("#session-feedback").classList.toggle("is-error", error);
+    log(message, error ? "warn" : "ok");
+}
+
+function bindSessions() {
+    $("#btn-session-save").addEventListener("click", saveBrowserSession);
+    $("#btn-session-resume").addEventListener("click", resumeBrowserSession);
+    $("#btn-session-delete").addEventListener("click", async () => {
+        if (state.busy || state.sessionBusy || state.sourceBusy || !confirm("Delete the saved browser snapshot and free its local storage? This does not affect a running guest.")) return;
+        state.sessionBusy = true;
+        refreshControls();
+        try { await sessionStore.clear(); await refreshSavedSession(); sessionFeedback("Saved browser session deleted. Its local storage was released."); }
+        catch (error) { sessionFeedback(describeError(error), true); }
+        finally { state.sessionBusy = false; refreshControls(); }
+    });
+}
+
+async function saveBrowserSession() {
+    if (state.busy || state.sessionBusy || state.sourceBusy || !engine.isAttached || !canRememberSession(state.active)) return;
+    if (!confirm(`Save a snapshot on THIS device? It uses local storage, replaces the previous saved session, and must fit the ${fmtBytes(SESSION_LIMIT_BYTES)} limit. Saving a ${state.active.machine.memoryMB} MB guest may also need considerable RAM. This is optional, not cloud storage.`)) return;
+    state.sessionBusy = true;
+    $("#tools-menu").open = false;
+    screenInput.release();
+    refreshControls();
+    try {
+        const version = await loadCoreVersion();
+        const buffer = await engine.saveState();
+        const metadata = sessionMetadata(state.active, version, buffer.byteLength);
+        await sessionStore.save(metadata, buffer);
+        await refreshSavedSession();
+        sessionFeedback(`Session saved here (${fmtBytes(buffer.byteLength)} of local storage). Resume it from the welcome screen; delete it there to free space. No autosave is enabled.`);
+    } catch (error) { sessionFeedback(`Session was not saved: ${describeError(error)}`, true); }
+    finally { state.sessionBusy = false; refreshControls(); }
+}
+
+async function resumeBrowserSession() {
+    if (state.busy || state.sourceBusy || state.sessionBusy || engine.isAttached) return;
+    state.sessionBusy = true;
+    refreshControls();
+    try {
+        const { metadata, buffer } = await sessionStore.read();
+        validateSession(metadata, await loadCoreVersion());
+        if (metadata.source.kind === "url") {
+            const probe = await probeUrl(metadata.source.url);
+            if (!canStream(probe) || probe.size !== metadata.source.sizeBytes) {
+                throw new Error("The saved image is unreachable or its size has changed. Restore requires the same streaming image.");
+            }
+        }
+        selectOs(metadata.osId);
+        state.machine = { ...defaults(), ...metadata.machine };
+        state.source = { ...metadata.source };
+        state.disk = { mode: "none", sizeMB: 512, file: null, buffer: null };
+        $("#disk-select").value = "none";
+        $("#disk-select").dispatchEvent(new Event("change"));
+        applyMachineToForm();
+        setSourceTab(metadata.source.kind === "url" ? "url" : "builtin");
+        if (metadata.source.kind === "url") $("#url-input").value = metadata.source.url;
+        renderSelection();
+        renderDiskPanel();
+        await bootMachine({ desktop: true, restoreBuffer: buffer });
+        if (engine.isRunning) sessionFeedback("Saved session resumed. New work stays temporary until you explicitly save again.");
+    } catch (error) { sessionFeedback(`Could not resume: ${describeError(error)}`, true); }
+    finally { state.sessionBusy = false; refreshControls(); }
 }
 
 window.addEventListener("error", (event) => {
