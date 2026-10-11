@@ -31,7 +31,7 @@ origins = sorted({(p.get('o', p['P']), p.get('c', '')) for p in packages
 (out / 'packages.json').write_text(json.dumps(packages, indent=2) + '\n')
 
 repo = out.parent / 'aports'
-subprocess.run(['git', 'clone', '--quiet', '--filter=blob:none', '--no-checkout',
+subprocess.run(['git', 'clone', '--quiet', '--depth=1', '--filter=blob:none', '--no-checkout',
                 'https://github.com/alpinelinux/aports.git', str(repo)], check=True)
 recipes = []
 for origin, commit in origins:

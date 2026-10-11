@@ -40,7 +40,7 @@ jobs:
                   else
                       python3 - <<'PYTHON'
                   import pathlib
-                  text = pathlib.Path('.cache/linux-browser/build.log').read_text(errors='replace')[-14000:]
+                  text = pathlib.Path('.cache/linux-browser/build.log').read_text(errors='replace')[-3500:]
                   text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
                   print('::error title=Linux image preparation failed::' + text)
                   PYTHON
