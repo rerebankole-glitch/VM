@@ -1,14 +1,18 @@
 name: Test and deploy to GitHub Pages
 
-# Publishes the site (everything is static — there is no build step) to GitHub
-# Pages, and runs the test suite for pull requests.
+# Runs the test suite for every push and pull request, and publishes the site
+# to GitHub Pages. Everything is static — there is no build step.
 #
-# One-time setup: repository → Settings → Pages → Build and deployment →
-# Source: "GitHub Actions". The workflow also tries to enable Pages by itself
-# and prints instructions in the run summary if it is not allowed to.
+# GitHub offers two ways to publish, and this workflow works with both:
 #
-# After that the site lives at https://<owner>.github.io/<repo>/ — see
-# docs/DEPLOY.md.
+#   * Source: "Deploy from a branch" (main / root)
+#       → GitHub publishes the repository itself on every push. The workflow
+#         runs the tests and reports that publishing already happened.
+#   * Source: "GitHub Actions"
+#       → the build/deploy jobs below assemble the site (only the files the site
+#         needs), so the tests gate the deployment.
+#
+# See docs/DEPLOY.md for the one-time settings step and troubleshooting.
 
 on:
     push:
@@ -37,8 +41,8 @@ jobs:
               with:
                   node-version: 22
 
-            # The catalogue/asset/interface checks plus real boots of the
-            # bundled images through the vendored emulator (Node mode).
+            # Catalogue/asset/interface checks plus real boots of the bundled
+            # images through the vendored emulator (v86's Node mode).
             - name: Run the test suite
               run: npm test
 
@@ -47,34 +51,39 @@ jobs:
         needs: test
         if: github.event_name != 'pull_request'
         runs-on: ubuntu-latest
+        outputs:
+            mode: ${{ steps.pages.outputs.mode }}
         steps:
             - uses: actions/checkout@v4
 
-            # `enablement: true` lets the first run switch Pages on by itself.
-            # When the token is not allowed to do that the job keeps going and
-            # the deploy step explains what to click.
-            - id: pages
-              uses: actions/configure-pages@v5
-              with:
-                  enablement: true
-              continue-on-error: true
-
-            - name: Report whether Pages is enabled
-              if: steps.pages.outcome == 'failure'
+            - name: Check how GitHub Pages is configured
+              id: pages
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
-                  ORG="${{ github.repository_owner }}"
-                  REPO="${{ github.event.repository.name }}"
-                  if gh api "repos/${ORG}/${REPO}/pages" --silent 2>/dev/null; then
-                      echo "Pages is enabled — continuing."
-                  else
-                      echo "::warning title=Enable GitHub Pages (one click)::Open Settings → Pages → Build and deployment → Source: GitHub Actions, then re-run this workflow. The site will appear at https://${ORG}.github.io/${REPO}/"
+                  mode="off"
+                  if json=$(gh api "repos/${{ github.repository }}/pages" 2>/dev/null); then
+                      detected=$(printf '%s' "$json" | sed -n 's/.*"build_type":"\([a-z]*\)".*/\1/p')
+                      if [ "$detected" = "workflow" ]; then
+                          mode="workflow"
+                      else
+                          mode="branch"
+                      fi
                   fi
+                  echo "mode=$mode" >> "$GITHUB_OUTPUT"
+                  echo "Detected Pages mode: $mode"
+                  case "$mode" in
+                      workflow)
+                          echo "::notice::GitHub Pages is set to 'GitHub Actions' — this workflow will publish the site." ;;
+                      branch)
+                          echo "::notice::GitHub Pages publishes the main branch directly, so this push is already live at https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/. Tests still run here; switch Source to 'GitHub Actions' if you would rather have this workflow publish only the site files." ;;
+                      *)
+                          echo "::warning title=Enable GitHub Pages (one click)::Open Settings → Pages → Build and deployment → Source: 'Deploy from a branch' (main, /) for the simplest setup, or 'GitHub Actions' to let this workflow publish. Then re-run this workflow." ;;
+                  esac
 
-            # Assemble only the files the site needs, so tests and tooling stay
-            # out of the published artifact.
+            # The remaining steps only run in "GitHub Actions" mode.
             - name: Assemble the static site
+              if: steps.pages.outputs.mode == 'workflow'
               run: |
                   mkdir -p _site
                   cp -r index.html app assets docs _site/
@@ -82,7 +91,11 @@ jobs:
                   du -sh _site
                   find _site -maxdepth 2 -type d | sort
 
+            - uses: actions/configure-pages@v5
+              if: steps.pages.outputs.mode == 'workflow'
+
             - name: Upload the site
+              if: steps.pages.outputs.mode == 'workflow'
               uses: actions/upload-pages-artifact@v3
               with:
                   path: _site
@@ -90,7 +103,7 @@ jobs:
     deploy:
         name: Deploy
         needs: build
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && needs.build.outputs.mode == 'workflow'
         runs-on: ubuntu-latest
         environment:
             name: github-pages
