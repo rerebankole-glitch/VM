@@ -10,6 +10,7 @@ import { CATALOG, RELAY_IDS, UNSUPPORTED, getEntry } from "./catalog.js";
 import { extractLiveLinux } from "./iso9660.js";
 import {
     BOOT_ORDERS, NET_BACKENDS, NIC_TYPES, VmEngine, describeError,
+    WASM_PATH, WASM_PATH_64, LIBV86_PATH, LIBV86_PATH_64,
 } from "./engine.js";
 import {
     RAM_LIMIT_BYTES, bundledSource, canStream, describeSource, probeUrl, readFileToArrayBuffer, resolveImage,
@@ -65,6 +66,7 @@ const state = {
     active: null,
     sessionSummary: null,
     coreVersion: "",
+    longMode: false,
     ui: { desktopMode: false, streamOnly: true, ...readStoredJson(UI_KEY, {}) },
     bootStartedAt: 0,
     /** @type {any} */
@@ -90,6 +92,7 @@ let screenInput = null;
 let streamController = null;
 const sessionStore = new SessionStore();
 let versionPromise = null;
+let emulatorKind = "v86";
 
 persistableDefaultsFix();
 
@@ -97,7 +100,40 @@ persistableDefaultsFix();
  * Boot
  * ------------------------------------------------------------------ */
 
-function init() {
+async function probeLongMode() {
+    for (const url of ["assets/v86_64/VERSION", "assets/v86_64/v86.wasm"]) {
+        try {
+            const response = await fetch(url, { method: "HEAD", cache: "no-store" });
+            if (response.ok) return true;
+        } catch { /* static hosts may reject HEAD */ }
+        try {
+            const response = await fetch(url, { cache: "no-store" });
+            if (response.ok) return true;
+        } catch { /* missing */ }
+    }
+    return false;
+}
+
+function loadEmulatorScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = src;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`Could not load ${src}`));
+        document.head.appendChild(script);
+    });
+}
+
+async function ensureEmulator(kind) {
+    if (emulatorKind === kind && window.V86) return;
+    const src = kind === "v86_64" ? LIBV86_PATH_64 : LIBV86_PATH;
+    await loadEmulatorScript(src);
+    if (!window.V86) throw new Error("The emulator script loaded but did not export V86.");
+    emulatorKind = kind;
+}
+
+async function init() {
+    state.longMode = await probeLongMode();
     buildOsList();
     buildBlockedList();
     buildDiskPanel();
@@ -117,6 +153,8 @@ function init() {
     setDesktopMode(Boolean(state.ui.desktopMode), { persist: false });
     setStatus("idle");
     log("Ready. Start the desktop or choose a system. Click its screen to control it.", "ok");
+    if (state.longMode) log("64-bit emulator core found in assets/v86_64/.", "ok");
+    else log("64-bit CPU demo needs libv86.js + v86.wasm in assets/v86_64/ (see that folder’s README).");
     log("Local files are never uploaded. Remote images can stream; the guest CPU and RAM still run in this browser.");
     updateFooterInfo();
     refreshSavedSession();
@@ -168,6 +206,7 @@ function buildOsList() {
         const badges = [
             `<span class="badge arch">${escapeHtml(entry.arch)}</span>`,
             entry.status === "instant" ? `<span class="badge instant">built in</span>` : "",
+            entry.requiresLongMode ? `<span class="badge ${state.longMode ? "instant" : "blocked"}">${state.longMode ? "64-bit CPU" : "needs 64-bit core"}</span>` : "",
             entry.browser ? `<span class="badge instant">${escapeHtml(entry.browser)}</span>` : "",
             entry.legacy ? `<span class="badge blocked">unsupported legacy</span>` : "",
             entry.status === "tricky" ? `<span class="badge slow">slow · experimental</span>` : "",
@@ -901,6 +940,15 @@ async function bootMachine({ desktop = false, restoreBuffer = null } = {}) {
     const relayUrl = relayUrlFor(machine.netBackend, machine.customRelayUrl);
 
     try {
+        const want64 = entry?.emulator === "v86_64" || entry?.arch === "x86_64" || entry?.requiresLongMode;
+        if (want64) {
+            if (!state.longMode) {
+                throw new Error("64-bit CPU files are missing. On your computer, download libv86.js, v86.wasm and v86-fallback.wasm from https://github.com/portlandhodl/v86_64/releases/tag/latest and put them in assets/v86_64/.");
+            }
+            await ensureEmulator("v86_64");
+        } else {
+            await ensureEmulator("v86");
+        }
         log(`Booting ${entry ? `${entry.name} ${entry.version}` : "image"} as ${state.source.device}…`);
         const { image, filesystem, cmdline: fsCmdline, strategy } = await resolveImage(state.source, {
             mode: state.source.kind === "url" ? "auto" : machine.diskMode,
@@ -955,6 +1003,7 @@ async function bootMachine({ desktop = false, restoreBuffer = null } = {}) {
 
         await engine.boot({
             image, filesystem, cmdline, bzimage, initrd,
+            wasmPath: want64 ? WASM_PATH_64 : WASM_PATH,
             device: state.source.device,
             memoryMB: machine.memoryMB,
             vgaMB: machine.vgaMB,

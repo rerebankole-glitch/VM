@@ -9,7 +9,7 @@
  *   "instant"  — built in, no ISO to save; the Linux desktop still needs boot time
  *   "works"    — 32-bit (i386) release that boots in v86, bring the ISO
  *   "tricky"   — 32-bit but heavy: expect a slow boot and a slow desktop
- *   "blocked"  — 64-bit only: cannot run, v86 has no 64-bit long mode
+ *   "blocked"  — will not run in this build (64-bit desktop ISOs are too heavy, or not x86)
  */
 
 /** @typedef {"instant"|"works"|"tricky"|"blocked"} OsStatus */
@@ -105,6 +105,31 @@ export const CATALOG = [
             "Interesting because a whole modern GUI OS runs inside ~1 MB of emulated memory.",
         ],
         links: [{ label: "kolibrios.org", url: "https://kolibrios.org/en/", kind: "page" }],
+    },
+    {
+        id: "tiny64",
+        name: "64-bit CPU",
+        version: "long mode demo",
+        family: "Independent",
+        desktop: "Text banner",
+        arch: "x86_64",
+        status: "instant",
+        emulator: "v86_64",
+        requiresLongMode: true,
+        summary: "A tiny kernel that enters 64-bit long mode and prints a banner. Not Linux, not Firefox — proof the CPU is 64-bit once the v86_64 core is installed.",
+        sizeBytes: 737_280,
+        device: "fda",
+        ramMB: 32,
+        vgaMB: 4,
+        bundled: { path: "assets/images/tiny64.img", fileName: "tiny64.img" },
+        notes: [
+            "Needs the 64-bit emulator files in assets/v86_64/ (libv86.js, v86.wasm, v86-fallback.wasm from portlandhodl/v86_64).",
+            "This guest is not an operating system. It only shows that long mode works.",
+            "Current Ubuntu and Mint 64-bit ISOs are multi-gigabyte and need gigabytes of RAM. They are not bundled and are not claimed to boot here.",
+        ],
+        links: [
+            { label: "v86_64 releases (the 64-bit CPU)", url: "https://github.com/portlandhodl/v86_64/releases/tag/latest", kind: "page" },
+        ],
     },
     {
         id: "freedos",
@@ -445,9 +470,9 @@ export const CATALOG = [
 ];
 
 /**
- * Modern releases that will NOT boot in v86: the emulated CPU has no 64-bit
- * long mode, so any amd64/x86_64 kernel fails immediately. Shown in the UI as
- * `blocked` so nobody wastes an hour downloading the wrong ISO.
+ * Large 64-bit desktops that this Pages build does not ship or claim to boot.
+ * Official v86 has no long mode; v86_64 can in principle run amd64 kernels, but
+ * Ubuntu/Mint 64-bit live ISOs are multi-gigabyte and want several GB of RAM.
  */
 export const UNSUPPORTED = [
     {
@@ -494,7 +519,7 @@ export const UNSUPPORTED = [
     },
 ];
 
-export const BURN_HINT = "64-bit (amd64/x86_64) ISOs cannot boot: v86 emulates a 32-bit x86 CPU with no long mode.";
+export const BURN_HINT = "Official v86 is 32-bit. A 64-bit CPU needs the v86_64 files in assets/v86_64/. Current Ubuntu/Mint 64-bit ISOs are not bundled.";
 
 /** @param {string} id */
 export function getEntry(id) {

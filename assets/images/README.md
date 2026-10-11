@@ -10,6 +10,7 @@ unmodified:
 | `tiny-linux.iso` | 5,666,816 B | Buildroot Linux, boots to a root shell | GPL and other free licences (see the Buildroot output licences) |
 | `freedos.img` | 737,280 B | FreeDOS 7.22 boot floppy | GPL |
 | `kolibri.img` | 1,474,560 B | KolibriOS 0.7.7.0 boot floppy | GPL |
+| `tiny64.img` | 737,280 B | Long-mode demo (not Linux). Needs the v86_64 core | MIT (this repo) |
 
 `SHA256SUMS` records their checksums; `npm test` verifies them, so a corrupted
 or substituted file cannot slip into a deployment.

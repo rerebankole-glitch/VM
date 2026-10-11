@@ -27,10 +27,11 @@ const require = createRequire(import.meta.url);
  * ES module, so hand Node a copy with a .cjs extension (the WASM core must sit
  * next to the bundle: that is where the loader looks by default).
  */
-function loadV86() {
+function loadV86From(sourceDir) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v86-test-"));
     for (const file of ["libv86.js", "v86.wasm", "v86-fallback.wasm"]) {
-        fs.copyFileSync(path.join(V86_DIR, file), path.join(dir, file));
+        const src = path.join(sourceDir, file);
+        if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dir, file));
     }
     fs.renameSync(path.join(dir, "libv86.js"), path.join(dir, "libv86.cjs"));
     const mod = require(path.join(dir, "libv86.cjs"));
@@ -38,6 +39,10 @@ function loadV86() {
     const V86 = mod.V86 || mod;
     assert.equal(typeof V86, "function", "the bundle did not export a V86 constructor");
     return { V86, dir };
+}
+
+function loadV86() {
+    return loadV86From(V86_DIR);
 }
 
 const { V86 } = loadV86();
@@ -189,5 +194,40 @@ test("the demand-loaded Alpine guest starts its native Dillo browser, not just t
         });
         assert.match(serial, /Linux version/);
         assert.ok(emulator.get_instruction_counter() > 5_000_000);
+    } finally { clearTimeout(timer); await emulator.destroy(); }
+});
+
+test("the 64-bit CPU demo enters long mode when v86_64 is vendored", { timeout: 45_000 }, async (t) => {
+    const dir64 = path.join(ROOT, "assets", "v86_64");
+    const wasm = path.join(dir64, "v86.wasm");
+    const floppy = path.join(IMAGES, "tiny64.img");
+    assert.ok(fs.existsSync(floppy), "tiny64.img is missing — run tools/tiny64/build.sh");
+    if (!fs.existsSync(wasm)) {
+        t.skip("assets/v86_64/v86.wasm is not installed (GitHub release CDN is not reachable here)");
+        return;
+    }
+    const { V86: V86_64 } = loadV86From(dir64);
+    let serial = "";
+    const emulator = new V86_64({
+        wasm_path: wasm,
+        bios: { url: path.join(V86_DIR, "seabios.bin") },
+        vga_bios: { url: path.join(V86_DIR, "vgabios.bin") },
+        memory_size: 32 * 1024 * 1024,
+        vga_memory_size: 2 * 1024 * 1024,
+        autostart: true,
+        disable_speaker: true,
+        fda: { url: floppy },
+        boot_order: 0x231,
+    });
+    let timer;
+    try {
+        await new Promise((resolve, reject) => {
+            timer = setTimeout(() => reject(new Error(`long mode token missing. Serial tail:\\n${serial.slice(-2000)}`)), 30_000);
+            emulator.add_listener("download-error", (event) => reject(new Error(`missing ${event.file_name}`)));
+            emulator.add_listener("serial0-output-byte", (byte) => {
+                serial += String.fromCharCode(byte);
+                if (serial.includes("WEBVM_X86_64_READY")) resolve();
+            });
+        });
     } finally { clearTimeout(timer); await emulator.destroy(); }
 });

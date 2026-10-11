@@ -110,9 +110,15 @@ test("64-bit releases are listed as blocked, never as bootable", () => {
         assert.ok(item.reason.length > 20, `${item.id} needs an explanation`);
         assert.ok(!CATALOG.some((entry) => entry.id === item.id), `${item.id} must not also be bootable`);
     }
-    // The heart of the whole project: nothing bootable may claim to be 64-bit.
+    // 64-bit guests are allowed only when they opt into the v86_64 core.
+    // Official v86 has no long mode — do not list amd64 desktops as bootable.
     for (const entry of CATALOG) {
-        assert.ok(!/x86_64|amd64|x64/.test(entry.arch), `${entry.id} claims a 64-bit architecture`);
+        if (entry.emulator === "v86_64") {
+            assert.match(entry.arch, /x86_64/, `${entry.id} uses v86_64 but is not x86_64`);
+            assert.equal(entry.requiresLongMode, true);
+            continue;
+        }
+        assert.ok(!/x86_64|amd64|x64/.test(entry.arch), `${entry.id} claims a 64-bit architecture without emulator: v86_64`);
     }
 });
 

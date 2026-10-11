@@ -47,7 +47,8 @@
             <section class="tabpanel is-active" data-panel="os" role="tabpanel">
                 <p class="panel-intro">
                     Pick what to boot. Green cards ship with this page; the Linux browser desktop can
-                    take a few minutes to start. Other systems need a 32-bit (i386) ISO because the emulated CPU has no 64-bit mode.
+                    take a few minutes to start. Official v86 is 32-bit. A 64-bit CPU needs the extra
+                    files in assets/v86_64/ — see the 64-bit CPU card.
                 </p>
                 <div class="os-list" id="os-list"></div>
                 <div class="os-download" id="os-download" hidden></div>
@@ -56,9 +57,10 @@
                     <summary>Won't boot in an emulator (64-bit releases)</summary>
                     <ul id="blocked-list"></ul>
                     <p class="hint">
-                        v86 emulates a 32-bit x86 CPU without long mode, so amd64/x86_64 kernels
-                        cannot start. Some older releases have 32-bit images. Current Mint requires a
-                        64-bit remote VM; a different theme cannot remove this CPU limitation.
+                        Current Ubuntu and Mint 64-bit live ISOs are multi-gigabyte and need several
+                        GB of RAM. They are not bundled. Official v86 is 32-bit; a 64-bit CPU needs
+                        the v86_64 files. Use a 32-bit ISO from the list, or a remote 64-bit VM for
+                        a current desktop.
                     </p>
                 </details>
             </section>

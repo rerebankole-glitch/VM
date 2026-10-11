@@ -25,6 +25,7 @@
         "test": "node --test tests/*.test.mjs",
         "vendor": "bash tools/vendor-v86.sh && bash tools/fetch-demo-images.sh",
         "vendor:v86": "bash tools/vendor-v86.sh",
+        "vendor:v86_64": "bash tools/vendor-v86_64.sh",
         "vendor:images": "bash tools/fetch-demo-images.sh",
         "test:browser": "node tools/browser-smoke.mjs"
     }

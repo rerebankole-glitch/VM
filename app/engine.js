@@ -7,6 +7,9 @@
  */
 
 export const WASM_PATH = "assets/v86/v86.wasm";
+export const WASM_PATH_64 = "assets/v86_64/v86.wasm";
+export const LIBV86_PATH = "assets/v86/libv86.js";
+export const LIBV86_PATH_64 = "assets/v86_64/libv86.js";
 export const BIOS_IMAGE = { url: "assets/v86/seabios.bin" };
 export const VGA_BIOS_IMAGE = { url: "assets/v86/vgabios.bin" };
 
@@ -146,7 +149,7 @@ export class VmEngine {
         });
 
         const options = {
-            wasm_path: WASM_PATH,
+            wasm_path: config.wasmPath || WASM_PATH,
             memory_size: config.memoryMB * 1024 * 1024,
             vga_memory_size: config.vgaMB * 1024 * 1024,
             screen_container: this.container,
