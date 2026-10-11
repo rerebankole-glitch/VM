@@ -49,8 +49,7 @@ PY
 # copyleft programs distributed here, not merely links to moving upstream code.
 python3 tools/linux-browser/collect-sources.py "$WORK/rootfs.tar" "$WORK/sources"
 cp -r tools/linux-browser "$WORK/sources/webvm-build"
-SOURCE_TAG="alpine-browser-sources-$(date -u +%Y%m%d)-${GITHUB_SHA:-local}"
-SOURCE_TAG="${SOURCE_TAG:0:48}"
+SOURCE_TAG="alpine-browser-sources-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 SOURCE_ARCHIVE="$ROOT/.cache/linux-browser/alpine-browser-sources.tar.zst"
 tar --zstd -cf "$SOURCE_ARCHIVE" -C "$WORK/sources" .
 

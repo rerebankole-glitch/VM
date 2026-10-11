@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect exact corresponding source for the guest's copyleft packages.
+"""Collect exact corresponding source and notices for the guest packages.
 
 The signed APK database records each origin's aports commit. Preserve that
 recipe directory (including local patches/configs), then use Alpine's own
@@ -27,7 +27,7 @@ for block in database.split('\n\n'):
     if 'P' in fields:
         packages.append(fields)
 origins = sorted({(p.get('o', p['P']), p.get('c', '')) for p in packages
-                  if re.search(r'(?:A?GPL|LGPL|MPL)', p.get('L', ''))})
+                  if p['P'] != 'linux-firmware-none'})
 (out / 'packages.json').write_text(json.dumps(packages, indent=2) + '\n')
 
 repo = out.parent / 'aports'
@@ -56,7 +56,9 @@ for origin, commit in origins:
 (out / 'fetch.sh').write_text('''#!/bin/sh
 set -eu
 apk add --no-cache abuild
+trap 'chmod -R a+rwX /sources' EXIT
 export SRCDEST=/sources/distfiles
+export DISTFILES_MIRROR=https://distfiles.alpinelinux.org/distfiles/v3.23
 export CARCH=x86
 mkdir -p "$SRCDEST"
 for recipe in /sources/recipes/*; do
@@ -66,4 +68,4 @@ done
 ''')
 subprocess.run(['docker', 'run', '--rm', '-v', f'{out}:/sources', 'alpine:3.23',
                 'sh', '/sources/fetch.sh'], check=True)
-print(f'Collected and verified source for {len(recipes)} copyleft package origins.')
+print(f'Collected and verified source for {len(recipes)} distributed package origins.')
