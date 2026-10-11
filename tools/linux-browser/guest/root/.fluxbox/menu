@@ -1,0 +1,6 @@
+[begin] (WebVM Linux)
+    [exec] (Dillo web browser) {dillo file:///opt/webvm/welcome.html}
+    [exec] (Terminal) {xterm -fa monospace -fs 12}
+    [separator]
+    [restart] (Restart desktop)
+[end]

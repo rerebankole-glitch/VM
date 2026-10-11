@@ -1,0 +1,50 @@
+name: Prepare the lightweight Linux browser
+
+# Image preparation runs in the cloud, not on the visitor's low-storage PC.
+# Only builder changes trigger it; the resulting asset commit cannot loop.
+on:
+    push:
+        branches: [arena/ad819641-vm]
+        paths: [tools/linux-browser/**, .github/workflows/linux-browser.yml]
+    workflow_dispatch:
+
+permissions:
+    contents: write
+
+concurrency:
+    group: linux-browser-image
+    cancel-in-progress: false
+
+jobs:
+    prepare:
+        if: github.ref == 'refs/heads/arena/ad819641-vm'
+        runs-on: ubuntu-latest
+        timeout-minutes: 35
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: arena/ad819641-vm
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: '3.12'
+            - name: Install the compression tool
+              run: pip install zstandard==0.23.0
+            - name: Build a 32-bit Linux desktop with Dillo
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: bash tools/linux-browser/build.sh
+            - name: Publish the corresponding sources outside Git
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  tag=$(cat .cache/linux-browser/source-tag.txt)
+                  gh release create "$tag" .cache/linux-browser/alpine-browser-sources.tar.zst \
+                      --target "$GITHUB_SHA" --title "Alpine browser: corresponding sources" \
+                      --notes "Exact Alpine aports recipes, patches and verified upstream sources for the copyleft packages in this lightweight desktop. See assets/images/alpine-browser/manifest.json and docs/LINUX-BROWSER.md. The browser is Dillo, not Firefox; JavaScript is not supported."
+            - name: Save only the bounded static guest files to the working branch
+              run: |
+                  git config user.name 'github-actions[bot]'
+                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+                  git add assets/images/alpine-browser
+                  git commit -m "Vendor demand-loaded Alpine Linux and Dillo desktop"
+                  git push origin arena/ad819641-vm

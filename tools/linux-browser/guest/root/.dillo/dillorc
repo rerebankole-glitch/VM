@@ -1,0 +1,4 @@
+geometry=960x640+32+24
+allow_white_bg=YES
+font_factor=1.2
+start_page=file:///opt/webvm/welcome.html
