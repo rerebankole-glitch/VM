@@ -1,0 +1,26 @@
+session.styleFile: /root/.fluxbox/styles/WebVM
+session.screen0.workspaces: 1
+session.screen0.workspacewarping: false
+session.screen0.toolbar.visible: true
+session.screen0.toolbar.widthPercent: 100
+session.screen0.toolbar.placement: BottomCenter
+session.screen0.toolbar.height: 28
+session.screen0.toolbar.autoHide: false
+session.screen0.toolbar.tools: workspacename, iconbar, clock
+session.screen0.strftimeFormat: %a %H:%M
+session.screen0.fullMaximization: true
+session.screen0.opaqueMove: false
+session.screen0.defaultDeco: NORMAL
+session.screen0.window.focus.alpha: 255
+session.screen0.menu.alpha: 255
+session.screen0.overlay.lineWidth: 1
+session.screen0.tab.placement: Top
+session.screen0.maxDisableMove: false
+session.screen0.maxDisableResize: false
+session.screen0.rowPlacementDirection: LeftToRight
+session.screen0.colPlacementDirection: TopToBottom
+session.screen0.windowMenu:
+session.appsFile: /root/.fluxbox/apps
+session.menuFile: /root/.fluxbox/menu
+session.keyFile: /usr/share/fluxbox/keys
+session.configVersion: 13

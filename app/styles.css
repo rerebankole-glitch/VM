@@ -288,7 +288,7 @@ input[type="text"]:focus, input[type="url"]:focus, select:focus, textarea:focus 
 .screen-shell {
     background: #080f11;
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: 18px;
     overflow: hidden;
     box-shadow: var(--shadow);
 }
@@ -296,7 +296,10 @@ input[type="text"]:focus, input[type="url"]:focus, select:focus, textarea:focus 
 .screen-viewport {
     position: relative;
     width: 100%;
-    height: clamp(500px, 60vh, 800px);
+    aspect-ratio: 16 / 9;
+    height: auto;
+    max-height: min(78vh, 920px);
+    min-height: 320px;
     overflow: hidden;
     background: #000;
     cursor: default;
@@ -427,7 +430,7 @@ input[type="text"]:focus, input[type="url"]:focus, select:focus, textarea:focus 
 
 @media (max-width: 1000px) {
     .layout { grid-template-columns: 1fr; }
-    .screen-viewport { height: clamp(480px, 60vh, 600px); }
+    .screen-viewport { aspect-ratio: 16 / 9; height: auto; max-height: min(62vh, 640px); }
 }
 
 @media (max-width: 560px) {
@@ -549,7 +552,9 @@ body.desktop-mode .layout { flex: 1; min-height: 0; display: flex; align-items: 
 body.desktop-mode .workspace { flex: 1; min-height: 0; gap: 8px; }
 body.desktop-mode .screen-shell, .screen-shell:fullscreen { display: flex; flex-direction: column; min-height: 0; }
 body.desktop-mode .screen-shell { flex: 1; }
-body.desktop-mode .screen-viewport, .screen-shell:fullscreen .screen-viewport { flex: 1; height: auto; min-height: 0; }
+body.desktop-mode .screen-viewport, .screen-shell:fullscreen .screen-viewport {
+    flex: 1; height: auto; min-height: 0; aspect-ratio: auto; max-height: none;
+}
 body.desktop-mode .display-bar { padding: 5px 12px; }
 body.desktop-mode .error-box { max-height: 150px; overflow-y: auto; }
 .screen-shell:fullscreen { width: 100vw; height: 100dvh; background: #080f11; border: 0; border-radius: 0; }

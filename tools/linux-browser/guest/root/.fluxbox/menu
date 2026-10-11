@@ -1,6 +1,7 @@
 [begin] (WebVM Linux)
-    [exec] (Dillo web browser) {dillo file:///opt/webvm/welcome.html}
-    [exec] (Terminal) {xterm -fa monospace -fs 12}
+    [exec] (Web browser) {dillo file:///opt/webvm/welcome.html}
+    [exec] (Terminal) {xterm -fa DejaVuSansMono -fs 11 -bg #0b1c22 -fg #d7ece4 -cr #8cddba}
     [separator]
+    [exec] (Refresh wallpaper) {xsetroot -solid '#0b1c22'}
     [restart] (Restart desktop)
 [end]

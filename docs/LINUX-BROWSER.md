@@ -21,9 +21,12 @@ including on project Pages at `/VM/`.
 
 The compressed filesystem totals about **72 MiB**, and boot can read many of its
 objects. The guest is configured with **256 MB RAM** plus emulator/browser overhead.
-It uses your computer's CPU, not a cloud CPU. Cold boot and visible-page verification
-took roughly two to three minutes on the QA host; allow more on a slow device. Browser-managed HTTP caches may still use some local storage; “no ISO to save”
-is not a promise of zero disk, RAM or network use.
+It uses your computer's CPU, not a cloud CPU. OpenRC skips `udev-settle` (it stalls
+badly on emulated hardware), 9p uses a larger `msize`, and the session tries a
+**16:9** framebuffer (1280×720, then 1024×576) before starting X. Cold boot still
+needs the kernel and X; allow a minute or more on a slow device. Browser-managed
+HTTP caches may still use some local storage; “no ISO to save” is not a promise of
+zero disk, RAM or network use.
 
 Guest changes live in memory. Closing or powering off loses them. **Save session here**
 is disabled for this new filesystem profile until its restore path is verified; the
@@ -36,7 +39,9 @@ management.
 
 Dillo supports basic HTML, images and HTTPS. **It does not implement JavaScript.**
 Many modern websites, streaming video services and web applications will not work.
-Do not present this as an equivalent to current Firefox or Chrome.
+A current Firefox cannot fit in this 32-bit, 256 MB guest (and Mozilla ended normal
+32-bit Linux Firefox builds). Do not present Dillo as an equivalent to Firefox or
+Chrome.
 
 **Internet is off by default.** The initial page is a local file, so a working browser
 window does not prove internet access. To try websites:

@@ -1,0 +1,11 @@
+[begin]
+  [app] (name=dillo)
+    [Maximized] {yes}
+    [Deco] {NORMAL}
+    [Workspace] {1}
+  [end]
+  [app] (name=xterm)
+    [Dimensions] {720 400}
+    [Position] (WINCENTER) {0 0}
+  [end]
+[end]

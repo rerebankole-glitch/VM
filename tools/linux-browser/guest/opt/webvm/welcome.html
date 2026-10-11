@@ -1,21 +1,34 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>WebVM Linux — Dillo browser</title></head>
-<body bgcolor="#f1f5f7" text="#183144" link="#166a51">
-<h1>Your Linux browser is running.</h1>
-<p>This is <strong>Dillo inside a real 32-bit Alpine Linux desktop</strong>, not a browser window painted by the website.</p>
-<hr>
-<h2>A small Linux computer, no giant ISO</h2>
-<p>Linux loads its filesystem from this Pages site as files are needed. Your browser supplies the CPU and RAM. No installer or ISO file needs to be saved on your computer.</p>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WebVM Linux — your desktop</title>
+</head>
+<body bgcolor="#0b1c22" text="#e8f0ed" link="#8cddba" vlink="#69c99e" alink="#d7ece4">
+<table width="100%" cellpadding="18" cellspacing="0" bgcolor="#102226"><tr><td>
+<font face="DejaVu Sans, sans-serif">
+<p><b>WEBVM LINUX</b> · Alpine 3.23 · widescreen desktop</p>
+<h1>Your Linux computer is running.</h1>
+<p>This is a real 32-bit Alpine desktop inside the emulator — Fluxbox, a terminal, and the Dillo browser. It is not a picture of a desktop painted by the website.</p>
+</font>
+</td></tr></table>
+<table width="100%" cellpadding="18" cellspacing="0"><tr><td>
+<font face="DejaVu Sans, sans-serif">
 <h2>Try it</h2>
 <ul>
-<li>Type a URL in Dillo's address bar, or open <a href="file:///opt/webvm/test.html">a second local page</a>.</li>
-<li>Right-click the desktop for a terminal and app menu.</li>
+<li>Type a URL in the address bar, or open <a href="file:///opt/webvm/test.html">a second local page</a>.</li>
+<li>Right-click the desktop for the browser and a terminal.</li>
 <li>Click the guest display to control it. Ctrl+Alt+G releases the controls.</li>
 </ul>
+<h2>About the browser</h2>
+<p>The bundled browser is <b>Dillo</b>. It handles basic HTML, images and HTTPS. It does <b>not</b> run JavaScript, so Firefox-class sites (accounts, video, web apps) will not work here.</p>
+<p>A current Firefox cannot fit in this 32-bit, 256 MB guest. Mozilla also ended normal 32-bit Linux Firefox builds. For Firefox, use a 64-bit remote Linux VM, or stream the experimental antiX 32-bit ISO from the catalogue.</p>
 <h2>Internet is optional</h2>
-<p>The first page is local and works without internet. To visit websites, explicitly opt into the public relay on the WebVM welcome card, or choose your own trusted relay under <strong>Machine → Network</strong> before booting. A public relay is a third-party service: do not send private data.</p>
-<p>Dillo supports basic HTML, images and HTTPS, <strong>not JavaScript</strong>. Complex web apps, videos and account sign-ins may not work. For full modern web browsing, use current 64-bit Linux Mint or another desktop with Firefox on a remote computer.</p>
+<p>This page is local and works offline. To visit websites, opt into the public relay on the WebVM welcome card, or pick your own relay under <b>Machine → Network</b> before booting. A public relay is a third-party service: do not send private data.</p>
 <h2>Temporary by default</h2>
-<p>Guest changes live in the tab's memory and disappear when you power off or close the tab. This lightweight desktop has no automatic persistent disk. Package-management and GPU features are intentionally trimmed.</p>
-<p>Build recipes, package provenance, licenses and source downloads: <a href="https://github.com/rerebankole-glitch/VM/blob/main/docs/LINUX-BROWSER.md">Linux browser documentation</a>.</p>
-</body></html>
+<p>Guest files live in this tab's memory. Power off or close the tab and they are gone. There is no automatic disk.</p>
+<p><a href="https://github.com/rerebankole-glitch/VM/blob/main/docs/LINUX-BROWSER.md">Linux browser documentation</a></p>
+</font>
+</td></tr></table>
+</body>
+</html>

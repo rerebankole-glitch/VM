@@ -8,12 +8,13 @@ if ip link show eth0 >/dev/null 2>&1; then
 fi
 xset s off
 xset -dpms
-xsetroot -solid '#152c3d' 2>/dev/null || true
+xsetroot -solid '#0b1c22' 2>/dev/null || true
 fluxbox > /tmp/fluxbox.log 2>&1 &
 wm=$!
-dillo -g 960x640+32+24 file:///opt/webvm/welcome.html > /tmp/dillo.log 2>&1 &
+# Geometry is a 16:9 window; Fluxbox also maximises Dillo from ~/.fluxbox/apps.
+dillo file:///opt/webvm/welcome.html > /tmp/dillo.log 2>&1 &
 # QA listens on serial: an actual mapped browser window, not just kernel text.
-for attempt in $(seq 1 120); do
+for attempt in $(seq 1 90); do
     if xwininfo -root -tree 2>/dev/null | grep -q 'WebVM Linux'; then
         echo WEBVM_BROWSER_WINDOW_READY > /dev/ttyS0
         break

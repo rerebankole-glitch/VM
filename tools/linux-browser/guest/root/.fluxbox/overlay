@@ -1,0 +1,7 @@
+menu.frame.font: DejaVu Sans-11
+menu.title.font: DejaVu Sans-11:bold
+toolbar.clock.font: DejaVu Sans-11
+toolbar.workspace.font: DejaVu Sans-11
+toolbar.iconbar.focused.font: DejaVu Sans-11
+toolbar.iconbar.unfocused.font: DejaVu Sans-11
+window.font: DejaVu Sans-11

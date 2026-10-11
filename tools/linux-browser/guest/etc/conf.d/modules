@@ -1,0 +1,3 @@
+# Do not autoload extra kernel modules. virtio/9p are already in the initramfs,
+# and probing unused drivers only slows a cold boot.
+modules=""

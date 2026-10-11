@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+# v86 has a handful of virtual devices. Waiting for a udev queue to drain
+# can stall this emulator for a minute. udev and udev-trigger still run.
+
+description="no-op udev-settle (emulator)"
+
+depend() {
+	after udev-trigger
+}
+
+start() {
+	ebegin "Skipping udev-settle on emulated hardware"
+	eend 0
+}
+
+stop() {
+	return 0
+}
