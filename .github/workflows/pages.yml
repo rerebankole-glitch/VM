@@ -1,0 +1,77 @@
+name: Test and deploy to GitHub Pages
+
+# Publishes the site (everything is static — there is no build step) to
+# GitHub Pages. The only job that touches the network is `deploy`.
+#
+# Setup: repository → Settings → Pages → Build and deployment → Source:
+# "GitHub Actions". After the first run the site lives at
+# https://<owner>.github.io/<repo>/ — see docs/DEPLOY.md.
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    pages: write
+    id-token: write
+
+concurrency:
+    group: pages
+    cancel-in-progress: true
+
+jobs:
+    test:
+        name: Test
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+
+            # Runs the catalogue/asset/interface checks plus a real boot of the
+            # bundled images through the vendored emulator (Node mode).
+            - name: Run the test suite
+              run: npm test
+
+    build:
+        name: Build site
+        needs: test
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            # `enablement: true` lets the first run switch Pages on by itself
+            # (Settings → Pages → Source: GitHub Actions).
+            - uses: actions/configure-pages@v5
+              with:
+                  enablement: true
+
+            # Assemble only the files the site needs, so tests and tooling stay
+            # out of the published artifact.
+            - name: Assemble the static site
+              run: |
+                  mkdir -p _site
+                  cp -r index.html app assets docs _site/
+                  cp .nojekyll _site/.nojekyll
+                  du -sh _site
+                  find _site -maxdepth 2 -type d | sort
+
+            - name: Upload the site
+              uses: actions/upload-pages-artifact@v3
+              with:
+                  path: _site
+
+    deploy:
+        name: Deploy
+        needs: build
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        steps:
+            - id: deployment
+              uses: actions/deploy-pages@v4

@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser VM — boot MX Linux, Lubuntu and Linux Mint in your browser</title>
+<meta name="description" content="A complete x86 virtual machine that runs in the browser tab: boot MX Linux 19.4, Lubuntu 18.04, Linux Mint 19.3, antiX, Tiny Core, FreeDOS and KolibriOS. Static site, no build step, no server, easy to host on GitHub Pages.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b1020">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1020'/%3E%3Crect x='14' y='18' width='36' height='24' rx='3' fill='none' stroke='%2364d2ff' stroke-width='3'/%3E%3Crect x='22' y='46' width='20' height='4' rx='2' fill='%2364d2ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app/styles.css">
+</head>
+<body data-vmstate="idle">
+
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" width="26" height="26"><rect x="10" y="14" width="44" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="5"/><rect x="22" y="50" width="20" height="5" rx="2.5" fill="currentColor"/></svg>
+        </span>
+        <div class="brand-text">
+            <h1>Browser VM</h1>
+            <p>MX Linux · Lubuntu · Linux Mint · antiX · Tiny Core &amp; more, booted inside your tab</p>
+        </div>
+    </div>
+    <div class="topbar-right">
+        <span class="pill ghost" id="zoom-label" title="Screen scale">100%</span>
+        <span class="pill ghost" id="mips" title="Emulated instructions per second">— MIPS</span>
+        <span class="pill" id="status-pill">Idle</span>
+        <a class="btn ghost" data-repo-link href="https://github.com/rerebankole-glitch/VM" target="_blank" rel="noopener">GitHub</a>
+    </div>
+</header>
+
+<main class="layout">
+    <aside class="sidebar">
+        <nav class="tabs" role="tablist" aria-label="Setup steps">
+            <button class="tab is-active" data-tab="os" role="tab" type="button"><b>1</b> System</button>
+            <button class="tab" data-tab="disk" role="tab" type="button"><b>2</b> Disk image</button>
+            <button class="tab" data-tab="machine" role="tab" type="button"><b>3</b> Hardware</button>
+        </nav>
+
+        <div class="tabpanels">
+            <!-- 1. operating system -->
+            <section class="tabpanel is-active" data-panel="os" role="tabpanel">
+                <p class="panel-intro">
+                    Pick what to boot. Green cards ship with this page and start in seconds;
+                    the others need a 32-bit (i386) ISO because the emulated CPU has no 64-bit mode.
+                </p>
+                <div class="os-list" id="os-list"></div>
+                <details class="blocked-box">
+                    <summary>Won't boot in an emulator (64-bit releases)</summary>
+                    <ul id="blocked-list"></ul>
+                    <p class="hint">
+                        v86 emulates a 32-bit x86 CPU without long mode, so amd64/x86_64 kernels
+                        cannot start. Every desktop distro still publishes 32-bit images — just not the
+                        newest ones.
+                    </p>
+                </details>
+            </section>
+
+            <!-- 2. disk image -->
+            <section class="tabpanel" data-panel="disk" role="tabpanel">
+                <div class="chosen" id="chosen-os"></div>
+                <ul class="notes" id="chosen-notes"></ul>
+                <div id="chosen-links" hidden></div>
+
+                <div class="segmented" role="tablist" aria-label="Where the disk image comes from">
+                    <button type="button" data-sourcetab="builtin" class="is-active">Built in</button>
+                    <button type="button" data-sourcetab="file">From disk</button>
+                    <button type="button" data-sourcetab="url">From URL</button>
+                </div>
+
+                <div data-sourcepanel="builtin">
+                    <p class="hint">These images live in <code>assets/images/</code> — nothing to download.</p>
+                    <div class="builtin-list" id="builtin-list"></div>
+                </div>
+
+                <div data-sourcepanel="file" hidden>
+                    <label class="drop-zone" id="drop-zone" for="file-input">
+                        <strong>Drop an ISO / IMG here</strong>
+                        <span>or click to choose a file. It is read by your browser — never uploaded.</span>
+                        <input type="file" id="file-input" accept=".iso,.img,.raw,.bin,.dsk,.ima,application/octet-stream">
+                    </label>
+                    <p class="hint" id="file-chosen" hidden></p>
+                    <label class="field">
+                        <span>Large image handling</span>
+                        <select id="disk-mode">
+                            <option value="auto">Automatic (recommended)</option>
+                            <option value="ram">Load fully into RAM — fastest, needs the memory</option>
+                            <option value="stream">Stream from disk on demand — low memory</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div data-sourcepanel="url" hidden>
+                    <label class="field">
+                        <span>Direct link to an .iso (must allow cross-origin reads)</span>
+                        <input type="url" id="url-input" placeholder="https://example.org/linux-19.4-386.iso" spellcheck="false">
+                    </label>
+                    <div class="row">
+                        <button class="btn" id="url-check" type="button">Check link</button>
+                        <button class="btn primary" id="url-use" type="button">Use this link</button>
+                    </div>
+                    <div id="url-result"></div>
+                    <p class="hint">
+                        Most distro mirrors refuse cross-origin reads, so this is mainly useful for
+                        ISOs you host yourself (S3, R2, nginx, or a GitHub release).
+                    </p>
+                </div>
+
+                <div class="source-current" id="source-current"></div>
+            </section>
+
+            <!-- 3. hardware -->
+            <section class="tabpanel" data-panel="machine" role="tabpanel">
+                <div class="field-grid">
+                    <label class="field">
+                        <span>Memory</span>
+                        <select id="memory-select"></select>
+                    </label>
+                    <label class="field">
+                        <span>Video memory</span>
+                        <select id="vga-select"></select>
+                    </label>
+                    <label class="field">
+                        <span>Boot order</span>
+                        <select id="bootorder-select"></select>
+                    </label>
+                    <label class="field">
+                        <span>Network card</span>
+                        <select id="nic-select"></select>
+                    </label>
+                </div>
+
+                <label class="field">
+                    <span>Network backend</span>
+                    <select id="net-select"></select>
+                </label>
+                <p class="hint" id="net-help"></p>
+                <label class="field" id="relay-row" hidden>
+                    <span>Relay / proxy URL</span>
+                    <input type="text" id="relay-input" placeholder="wss://your-relay.example/" spellcheck="false">
+                </label>
+
+                <fieldset class="toggles">
+                    <legend>Hard disk (optional)</legend>
+                    <label class="field">
+                        <span>Attach a disk</span>
+                        <select id="disk-select">
+                            <option value="none">No hard disk</option>
+                            <option value="new">Create an empty disk in RAM</option>
+                            <option value="file">Use a disk image file (.img / .raw)</option>
+                        </select>
+                    </label>
+                    <label class="field" id="disk-size-row" hidden>
+                        <span>Disk size</span>
+                        <select id="disk-size">
+                            <option value="256">256 MB</option>
+                            <option value="512" selected>512 MB</option>
+                            <option value="1024">1 GB</option>
+                            <option value="2048">2 GB</option>
+                        </select>
+                    </label>
+                    <label class="field" id="disk-file-row" hidden>
+                        <span>Disk image to attach (read into RAM so the guest can write to it)</span>
+                        <input type="file" id="disk-file-input" accept=".img,.raw,.bin,.hdd">
+                    </label>
+                    <p class="hint" id="disk-note">
+                        Installing a guest writes to <code>hda</code>. To keep an installation, attach a
+                        disk here, install, then download the image — and attach that file next time.
+                    </p>
+                    <div class="row">
+                        <button class="btn ghost" id="disk-download" type="button" disabled>Download disk image</button>
+                    </div>
+                </fieldset>
+
+                <fieldset class="toggles">
+                    <legend>Extras</legend>
+                    <label class="check"><input type="checkbox" id="toggle-quickboot"><span>Skip the BIOS boot menu</span></label>
+                    <label class="check"><input type="checkbox" id="toggle-acpi"><span>ACPI / APIC (some guests need it)</span></label>
+                    <label class="check"><input type="checkbox" id="toggle-sound"><span>Sound Blaster 16 audio</span></label>
+                    <label class="check"><input type="checkbox" id="toggle-safe"><span>Safe CPU mode (no JIT — much slower)</span></label>
+                </fieldset>
+
+                <div class="row">
+                    <button class="btn" id="reset-machine" type="button">Use recommended settings</button>
+                </div>
+                <p class="hint" id="machine-summary"></p>
+            </section>
+        </div>
+    </aside>
+
+    <section class="workspace">
+        <div class="screen-shell">
+            <div class="screen-viewport" id="screen-viewport">
+                <div class="screen-stage" id="screen-stage">
+                    <!-- v86 needs exactly this shape: a div for text mode, then a canvas. -->
+                    <div id="screen_container">
+                        <div class="screen-text"></div>
+                        <canvas></canvas>
+                    </div>
+                </div>
+
+                <div class="screen-overlay" id="screen-overlay">
+                    <div class="overlay-card">
+                        <h2>Your virtual machine is ready to boot</h2>
+                        <ol>
+                            <li>Choose a system and a disk image on the left.</li>
+                            <li>Press <strong>Boot</strong> — everything runs locally in this tab.</li>
+                            <li>Hover the screen to type; click it to grab the mouse; <kbd>Esc</kbd> releases it.</li>
+                        </ol>
+                        <p class="hint">
+                            Live Linux ISOs are heavy for an emulator: expect a slow boot and be patient.
+                            The built-in images and Tiny Core start in seconds.
+                        </p>
+                    </div>
+                    <div class="paused-banner" id="paused-banner" hidden>Paused — press Resume to continue</div>
+                </div>
+            </div>
+
+            <div class="screen-toolbar">
+                <button class="btn primary" id="btn-start" type="button"><span id="start-hint">Boot</span></button>
+                <button class="btn" id="btn-pause" type="button" disabled>Pause</button>
+                <button class="btn" id="btn-reset" type="button" disabled>Reset</button>
+                <button class="btn" id="btn-power" type="button" disabled>Power off</button>
+                <span class="toolbar-gap"></span>
+                <button class="btn ghost" id="btn-fit" type="button" title="Scale the screen to the window">Fit</button>
+                <button class="btn ghost" id="btn-zoom-out" type="button" title="Zoom out">−</button>
+                <button class="btn ghost" id="btn-zoom-in" type="button" title="Zoom in">+</button>
+                <button class="btn ghost" id="btn-fullscreen" type="button" title="Fullscreen (Esc to leave)">Fullscreen</button>
+                <span class="toolbar-gap"></span>
+                <button class="btn ghost" id="btn-screenshot" type="button" disabled title="Save a PNG of the screen">Screenshot</button>
+                <button class="btn ghost" id="btn-cad" type="button" disabled title="Ctrl+Alt+Delete">Ctrl+Alt+Del</button>
+                <button class="btn ghost" id="btn-type" type="button" disabled title="Send text as keystrokes">Type text</button>
+                <button class="btn ghost" id="btn-state-save" type="button" disabled title="Download a snapshot of the whole machine">Save state</button>
+                <button class="btn ghost" id="btn-state-load" type="button" disabled title="Restore a snapshot">Load state</button>
+                <input type="file" id="state-input" accept=".bin,.state,application/octet-stream" hidden>
+            </div>
+
+            <div class="type-box" id="type-box" hidden>
+                <input type="text" id="type-input" placeholder="Type here, then send — the guest receives it as keystrokes" spellcheck="false">
+                <button class="btn primary" id="type-send" type="button">Send</button>
+            </div>
+
+            <div class="statusbar">
+                <div class="progress" id="progress" hidden>
+                    <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+                    <span id="progress-label" class="progress-label"></span>
+                    <span id="progress-detail" class="progress-detail"></span>
+                </div>
+                <dl class="facts">
+                    <div><dt>Image</dt><dd id="image-strategy">—</dd></div>
+                    <div><dt>Uptime</dt><dd id="uptime">—</dd></div>
+                    <div><dt>CPU</dt><dd id="instructions">—</dd></div>
+                    <div><dt>Core</dt><dd id="v86-version">v86</dd></div>
+                </dl>
+            </div>
+
+            <div class="error-box" id="error-box" hidden>
+                <strong>Something went wrong</strong>
+                <p id="error-text"></p>
+                <p class="hint">
+                    Common fixes: use a 32-bit ISO, download it and open it with “From disk”,
+                    or lower the memory setting.
+                </p>
+                <button class="btn ghost" type="button" onclick="document.getElementById('error-box').hidden = true">Dismiss</button>
+            </div>
+        </div>
+
+        <details class="console" open>
+            <summary>
+                Activity log
+                <button class="btn ghost tiny" id="btn-clear-log" type="button">Clear</button>
+            </summary>
+            <div class="log" id="log-body"></div>
+        </details>
+    </section>
+</main>
+
+<footer class="footer">
+    <div>
+        <strong>Runs entirely in your browser.</strong> No server, no uploads — the guest machine is
+        emulated by <a href="https://github.com/copy/v86" target="_blank" rel="noopener">v86</a>
+        (BSD-2-Clause) with SeaBIOS, and your ISO never leaves your device.
+    </div>
+    <div class="footer-links">
+        <a data-repo-link data-repo-path="README.md" href="#">Read me</a>
+        <a data-repo-link data-repo-path="docs/DISTROS.md" href="#">Which distros work</a>
+        <a data-repo-link data-repo-path="docs/DEPLOY.md" href="#">Host it on GitHub Pages</a>
+        <a data-repo-link data-repo-path="docs/HOSTING-ISOS.md" href="#">Host your own ISOs</a>
+        <a data-repo-link data-repo-path="docs/ARCHITECTURE.md" href="#">How it is built</a>
+    </div>
+</footer>
+
+<script src="assets/v86/libv86.js"></script>
+<script type="module" src="app/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# dependencies (the site itself has none)
+node_modules/
+package-lock.json
+
+# build output / local archives
+_site/
+*.tar.gz
+*.zip
+
+# editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# local disk images users may drop next to the site while testing
+/*.iso
+/*.img
