@@ -4,7 +4,7 @@ FROM docker.io/i386/alpine:3.23
 RUN apk update && apk upgrade && apk add --no-cache \
     alpine-base alpine-conf openrc agetty linux-virt linux-firmware-none \
     xorg-server xf86-video-fbdev xf86-input-mouse xf86-input-keyboard \
-    xinit xset xwininfo fluxbox xterm dillo ca-certificates font-dejavu
+    xinit xset xsetroot xwininfo fluxbox xterm dillo ca-certificates font-dejavu
 
 COPY guest/ /
 RUN chmod +x /root/.xinitrc \

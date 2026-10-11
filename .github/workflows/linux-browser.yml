@@ -32,7 +32,20 @@ jobs:
             - name: Build a 32-bit Linux desktop with Dillo
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: bash tools/linux-browser/build.sh
+              run: |
+                  mkdir -p .cache/linux-browser
+                  set -o pipefail
+                  if bash tools/linux-browser/build.sh 2>&1 | tee .cache/linux-browser/build.log; then
+                      echo 'Linux guest prepared.'
+                  else
+                      python3 - <<'PYTHON'
+                  import pathlib
+                  text = pathlib.Path('.cache/linux-browser/build.log').read_text(errors='replace')[-14000:]
+                  text = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print('::error title=Linux image preparation failed::' + text)
+                  PYTHON
+                      exit 1
+                  fi
             - name: Publish the corresponding sources outside Git
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
