@@ -1,14 +1,19 @@
 name: Test and deploy to GitHub Pages
 
-# Publishes the site (everything is static — there is no build step) to
-# GitHub Pages. The only job that touches the network is `deploy`.
+# Publishes the site (everything is static — there is no build step) to GitHub
+# Pages, and runs the test suite for pull requests.
 #
-# Setup: repository → Settings → Pages → Build and deployment → Source:
-# "GitHub Actions". After the first run the site lives at
-# https://<owner>.github.io/<repo>/ — see docs/DEPLOY.md.
+# One-time setup: repository → Settings → Pages → Build and deployment →
+# Source: "GitHub Actions". The workflow also tries to enable Pages by itself
+# and prints instructions in the run summary if it is not allowed to.
+#
+# After that the site lives at https://<owner>.github.io/<repo>/ — see
+# docs/DEPLOY.md.
 
 on:
     push:
+        branches: [main]
+    pull_request:
         branches: [main]
     workflow_dispatch:
 
@@ -32,7 +37,7 @@ jobs:
               with:
                   node-version: 22
 
-            # Runs the catalogue/asset/interface checks plus a real boot of the
+            # The catalogue/asset/interface checks plus real boots of the
             # bundled images through the vendored emulator (Node mode).
             - name: Run the test suite
               run: npm test
@@ -40,15 +45,32 @@ jobs:
     build:
         name: Build site
         needs: test
+        if: github.event_name != 'pull_request'
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
 
-            # `enablement: true` lets the first run switch Pages on by itself
-            # (Settings → Pages → Source: GitHub Actions).
-            - uses: actions/configure-pages@v5
+            # `enablement: true` lets the first run switch Pages on by itself.
+            # When the token is not allowed to do that the job keeps going and
+            # the deploy step explains what to click.
+            - id: pages
+              uses: actions/configure-pages@v5
               with:
                   enablement: true
+              continue-on-error: true
+
+            - name: Report whether Pages is enabled
+              if: steps.pages.outcome == 'failure'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  ORG="${{ github.repository_owner }}"
+                  REPO="${{ github.event.repository.name }}"
+                  if gh api "repos/${ORG}/${REPO}/pages" --silent 2>/dev/null; then
+                      echo "Pages is enabled — continuing."
+                  else
+                      echo "::warning title=Enable GitHub Pages (one click)::Open Settings → Pages → Build and deployment → Source: GitHub Actions, then re-run this workflow. The site will appear at https://${ORG}.github.io/${REPO}/"
+                  fi
 
             # Assemble only the files the site needs, so tests and tooling stay
             # out of the published artifact.
@@ -68,6 +90,7 @@ jobs:
     deploy:
         name: Deploy
         needs: build
+        if: github.event_name != 'pull_request'
         runs-on: ubuntu-latest
         environment:
             name: github-pages
