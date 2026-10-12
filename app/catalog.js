@@ -21,6 +21,13 @@ export const CASPER_LIVE = {
     cmdline: "boot=casper ignore_uuid noprompt noeject nomodeset vga=791 noapic nolapic acpi=off pci=nomsi nosplash --- console=tty0 console=ttyS0,115200 tsc=reliable random.trust_cpu=on mitigations=off",
 };
 
+/** 64-bit Ubuntu/Mint live ISOs on v86_64 (ACPI on; kernel extracted the same way). */
+export const CASPER_LIVE_64 = {
+    kernel: ["casper/vmlinuz", "casper/vmlinuz.efi"],
+    initrd: ["casper/initrd", "casper/initrd.lz", "casper/initrd.gz", "casper/initrd.img"],
+    cmdline: "boot=casper ignore_uuid noprompt noeject nomodeset --- console=tty0 console=ttyS0,115200 tsc=reliable random.trust_cpu=on mitigations=off",
+};
+
 /** Debian live-boot (MX, Debian live). */
 export const LIVEBOOT_LIVE = {
     kernel: ["live/vmlinuz", "live/vmlinuz1", "live/vmlinuz2"],
@@ -215,7 +222,7 @@ export const CATALOG = [
         notes: [
             "Stream `linuxmint-19.3-xfce-32bit.iso` from a verified host — no ISO file to save locally.",
             "Mint 19.3 is out of security support. Do not use it for private accounts or everyday computing.",
-            "Mint 20 and later are 64-bit only; 19.3 is the newest Mint that can run in an x86 emulator.",
+            "Mint 20+ is 64-bit only — use the 64-bit Mint card and an amd64 Xfce ISO. 19.3 is the last 32-bit Mint.",
             "The emulator extracts casper/vmlinuz + initrd and boots with nomodeset, skipping the CD menu.",
             "Cinnamon 32-bit exists too but is far heavier — avoid it on emulated hardware.",
         ],
@@ -269,6 +276,97 @@ export const CATALOG = [
                 kind: "page",
             },
             { label: "lubuntu.me", url: "https://lubuntu.me/", kind: "page" },
+        ],
+    },
+
+    /* ------------------------------------------------------------------ *
+     * 64-bit Ubuntu / Mint — v86_64 CPU, you bring the ISO
+     * ------------------------------------------------------------------ */
+    {
+        id: "ubuntu-24-amd64",
+        name: "Ubuntu",
+        version: "24.04+ LTS (amd64)",
+        family: "Ubuntu",
+        desktop: "GNOME",
+        arch: "x86_64",
+        status: "tricky",
+        emulator: "v86_64",
+        requiresLongMode: true,
+        summary: "64-bit Ubuntu live desktop. Bring the amd64 ISO (From disk or a Range/CORS URL). Experimental — not boot-verified here.",
+        sizeBytes: 5_700_000_000,
+        device: "cdrom",
+        ramMB: 2048,
+        vgaMB: 16,
+        nicType: "virtio",
+        bootOrder: "cd",
+        acpi: true,
+        live: CASPER_LIVE_64,
+        notes: [
+            "This uses the 64-bit emulator core. Pick `ubuntu-*-desktop-amd64.iso` — not i386.",
+            "Do not put the ISO in git (several GB). Use From disk, or stream from GitHub Releases / your own host with CORS and Range.",
+            "GNOME wants a lot of RAM. Start at 2 GB; raise to 4 GB if it dies (that switches on the mem64 wasm). Expect a very slow boot.",
+            "Not boot-verified in this environment. A desktop is not a promise of Firefox or a usable daily driver.",
+        ],
+        links: [
+            { label: "Ubuntu 24.04 LTS downloads", url: "https://releases.ubuntu.com/24.04/", kind: "page" },
+            { label: "Ubuntu desktop (current)", url: "https://ubuntu.com/download/desktop", kind: "page" },
+        ],
+    },
+    {
+        id: "mint-22-xfce-amd64",
+        name: "Linux Mint",
+        version: "22 Xfce (amd64)",
+        family: "Ubuntu",
+        desktop: "Xfce",
+        arch: "x86_64",
+        status: "tricky",
+        emulator: "v86_64",
+        requiresLongMode: true,
+        summary: "64-bit Mint Xfce live desktop. Bring the amd64 ISO. Experimental — not boot-verified here. Xfce is lighter than Cinnamon.",
+        sizeBytes: 2_900_000_000,
+        device: "cdrom",
+        ramMB: 2048,
+        vgaMB: 16,
+        nicType: "virtio",
+        bootOrder: "cd",
+        acpi: true,
+        live: CASPER_LIVE_64,
+        notes: [
+            "Mint 20+ is 64-bit only. Choose the Xfce amd64 ISO, not Cinnamon and not 32-bit.",
+            "Use From disk (the ISO is too big for this git repo) or a CORS+Range URL.",
+            "Not boot-verified here. Slow. Do not use for private accounts until you have seen it actually reach a desktop.",
+        ],
+        links: [
+            { label: "Linux Mint downloads", url: "https://linuxmint.com/download.php", kind: "page" },
+            { label: "All Mint editions", url: "https://linuxmint.com/download_all.php", kind: "page" },
+        ],
+    },
+    {
+        id: "lubuntu-24-amd64",
+        name: "Lubuntu",
+        version: "24.04 LTS (amd64)",
+        family: "Ubuntu",
+        desktop: "LXQt",
+        arch: "x86_64",
+        status: "tricky",
+        emulator: "v86_64",
+        requiresLongMode: true,
+        summary: "64-bit Lubuntu live desktop. Lighter than Ubuntu GNOME on this emulator. Bring the amd64 ISO. Experimental — not boot-verified here.",
+        sizeBytes: 3_100_000_000,
+        device: "cdrom",
+        ramMB: 2048,
+        vgaMB: 16,
+        nicType: "virtio",
+        bootOrder: "cd",
+        acpi: true,
+        live: CASPER_LIVE_64,
+        notes: [
+            "Grab `lubuntu-*-desktop-amd64.iso`. LXQt is the realistic 64-bit Ubuntu-family guest if GNOME is too heavy.",
+            "From disk or a CORS+Range URL — do not commit the ISO.",
+            "Not boot-verified here.",
+        ],
+        links: [
+            { label: "Lubuntu downloads", url: "https://lubuntu.me/downloads/", kind: "page" },
         ],
     },
 
@@ -483,27 +581,6 @@ export const UNSUPPORTED = [
         reason: "MX dropped 32-bit images after MX-19.4. Use MX 19.4 (386) instead.",
     },
     {
-        id: "mint-21-amd64",
-        name: "Linux Mint 20 / 21 / 22",
-        arch: "x86_64",
-        status: "blocked",
-        reason: "Mint has been 64-bit only since Mint 20. Use Mint 19.3 Xfce (32-bit).",
-    },
-    {
-        id: "ubuntu-20-amd64",
-        name: "Ubuntu 20.04 / 22.04 / 24.04 / 25.04",
-        arch: "x86_64",
-        status: "blocked",
-        reason: "Ubuntu stopped shipping i386 desktop images after 18.04. Use Ubuntu 18.04.5 (i386) or Lubuntu 18.04.5.",
-    },
-    {
-        id: "lubuntu-20-amd64",
-        name: "Lubuntu 20.04 / 22.04 / 24.04",
-        arch: "x86_64",
-        status: "blocked",
-        reason: "Ubuntu stopped shipping i386 images after 18.04. Use Lubuntu 18.04.5 (i386).",
-    },
-    {
         id: "debian-13-amd64",
         name: "Debian 13 “trixie” (i386 installer)",
         arch: "x86_64",
@@ -519,7 +596,7 @@ export const UNSUPPORTED = [
     },
 ];
 
-export const BURN_HINT = "Official v86 is 32-bit. A 64-bit CPU needs the v86_64 files in assets/v86_64/. Current Ubuntu/Mint 64-bit ISOs are not bundled.";
+export const BURN_HINT = "64-bit Ubuntu/Mint: pick the amd64 card, attach the ISO from disk (too big for git). 2 GB RAM default; 4 GB uses the mem64 wasm.";
 
 /** @param {string} id */
 export function getEntry(id) {

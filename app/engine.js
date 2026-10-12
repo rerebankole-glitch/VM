@@ -8,8 +8,18 @@
 
 export const WASM_PATH = "assets/v86/v86.wasm";
 export const WASM_PATH_64 = "assets/v86_64/v86.wasm";
+export const WASM_PATH_64_MEM = "assets/v86_64/v86-mem64.wasm";
 export const LIBV86_PATH = "assets/v86/libv86.js";
 export const LIBV86_PATH_64 = "assets/v86_64/libv86.js";
+/** Guest RAM above 3 GiB needs the mem64 wasm (wasm memory64). */
+export const MEM64_RAM_MB = 3072;
+
+export function wasmPathFor(kind, memoryMB) {
+    if (kind === "v86_64") {
+        return memoryMB > MEM64_RAM_MB ? WASM_PATH_64_MEM : WASM_PATH_64;
+    }
+    return WASM_PATH;
+}
 export const BIOS_IMAGE = { url: "assets/v86/seabios.bin" };
 export const VGA_BIOS_IMAGE = { url: "assets/v86/vgabios.bin" };
 
@@ -54,7 +64,7 @@ export const NET_BACKENDS = [
     },
 ];
 
-const MEMORY_CHOICES = [16, 32, 64, 128, 256, 512, 1024, 2048];
+const MEMORY_CHOICES = [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192];
 const VGA_CHOICES = [2, 4, 8, 16, 32];
 
 /** @typedef {"idle"|"loading"|"ready"|"running"|"paused"|"error"|"stopped"} EngineState */

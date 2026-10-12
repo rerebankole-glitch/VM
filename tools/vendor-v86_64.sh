@@ -11,7 +11,7 @@ REPO="${V86_64_REPO:-portlandhodl/v86_64}"
 TAG="${V86_64_TAG:-latest}"
 
 mkdir -p "$DEST"
-FILES=(libv86.js v86.wasm v86-fallback.wasm)
+FILES=(libv86.js v86.wasm v86-fallback.wasm v86-mem64.wasm)
 
 if [[ "${1:-}" == "--from" ]]; then
     SOURCE="${2:?usage: vendor-v86_64.sh --from <dir-with-libv86.js-and-wasm>}"

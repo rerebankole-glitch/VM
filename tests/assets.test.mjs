@@ -46,7 +46,7 @@ test("the bundle exports V86 for browsers and Node", () => {
 
 test("the 64-bit v86_64 core is vendored next to the 32-bit emulator", () => {
     const dir = path.join(ROOT, "assets", "v86_64");
-    for (const file of ["libv86.js", "v86.wasm", "v86-fallback.wasm", "VERSION"]) {
+    for (const file of ["libv86.js", "v86.wasm", "v86-fallback.wasm", "v86-mem64.wasm", "VERSION"]) {
         const full = path.join(dir, file);
         assert.ok(fs.existsSync(full), `missing assets/v86_64/${file}`);
         assert.ok(fs.statSync(full).size > 0, `assets/v86_64/${file} is empty`);

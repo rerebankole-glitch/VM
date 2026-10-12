@@ -10,7 +10,7 @@ import { CATALOG, RELAY_IDS, UNSUPPORTED, getEntry } from "./catalog.js";
 import { extractLiveLinux } from "./iso9660.js";
 import {
     BOOT_ORDERS, NET_BACKENDS, NIC_TYPES, VmEngine, describeError,
-    WASM_PATH, WASM_PATH_64, LIBV86_PATH, LIBV86_PATH_64,
+    LIBV86_PATH, LIBV86_PATH_64, wasmPathFor,
 } from "./engine.js";
 import {
     RAM_LIMIT_BYTES, bundledSource, canStream, describeSource, probeUrl, readFileToArrayBuffer, resolveImage,
@@ -1003,7 +1003,7 @@ async function bootMachine({ desktop = false, restoreBuffer = null } = {}) {
 
         await engine.boot({
             image, filesystem, cmdline, bzimage, initrd,
-            wasmPath: want64 ? WASM_PATH_64 : WASM_PATH,
+            wasmPath: wasmPathFor(want64 ? "v86_64" : "v86", machine.memoryMB),
             device: state.source.device,
             memoryMB: machine.memoryMB,
             vgaMB: machine.vgaMB,

@@ -22,7 +22,7 @@ test("every catalogue entry is complete and unique", () => {
 
         assert.ok(["instant", "works", "tricky"].includes(entry.status), `${entry.id} has an odd status`);
         assert.ok(Number.isFinite(entry.ramMB) && entry.ramMB >= 16, `${entry.id} needs a sane ramMB`);
-        assert.ok([16, 32, 64, 128, 256, 512, 1024, 2048].includes(entry.ramMB), `${entry.id} ramMB must be a v86 memory size`);
+        assert.ok([16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192].includes(entry.ramMB), `${entry.id} ramMB must be a v86 memory size`);
         assert.ok(Array.isArray(entry.notes), `${entry.id}.notes should be a list`);
     }
 });

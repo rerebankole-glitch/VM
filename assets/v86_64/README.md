@@ -8,6 +8,7 @@ CPU: the same `V86` API as official v86, plus long mode.
 | `libv86.js` | JS wrapper |
 | `v86.wasm` | 64-bit capable CPU |
 | `v86-fallback.wasm` | interpreter fallback |
+| `v86-mem64.wasm` | guest RAM above 3 GiB (wasm memory64) |
 | `VERSION` | release tag these files came from |
 
 Do **not** replace `assets/v86/`. That 32-bit core still runs Alpine, KolibriOS

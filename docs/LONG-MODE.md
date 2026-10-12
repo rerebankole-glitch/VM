@@ -13,10 +13,10 @@ This Pages VM ships **32-bit v86** for every existing guest. A second core,
 | --- | --- |
 | Ubuntu 18.04.5 **i386** | Streamed live kernel (slow, legacy) |
 | Mint 19.3 Xfce **32-bit** | Same |
-| Ubuntu 20.04+ / 26.04 **amd64** | Not bundled. v86_64 has shown Ubuntu 26.04 GNOME with an ~6.5 GB ISO and **8 GB** RAM. This build’s memory picker tops out at 2 GB, and GitHub Pages cannot ship that ISO. |
-| Mint 20+ **amd64** | Not tested on v86_64. Same size/RAM problem. Not listed as bootable. |
+| Ubuntu 24.04+ **amd64** | Catalogue card **Ubuntu 24.04+ (amd64)**. You attach the ISO (From disk). Default 2 GB RAM; 4 GB+ uses `v86-mem64.wasm`. Not boot-verified here. |
+| Mint 22 Xfce **amd64** | Same: bring the ISO. Prefer Xfce over Cinnamon. |
 
-A 64-bit CPU does **not** mean current Ubuntu/Mint “just work” here.
+The ISO is still yours to attach. Git cannot hold a 6 GB Ubuntu image.
 
 ## Built-in 64-bit demo
 
